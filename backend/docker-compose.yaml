@@ -62,10 +62,21 @@ services:
     ports:
       - "5432:5432" # Default PostgreSQL port
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     networks:
       - zpay
-    command: postgres -c wal_level=logical -c max_replication_slots=4 -c max_wal_senders=4
+    # command: postgres -c wal_level=logical -c max_replication_slots=4 -c max_wal_senders=4
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - zpay
+    command: redis-server --appendonly yes
 
 networks:
   zpay:
@@ -75,4 +86,6 @@ volumes:
   kafka_data:
     driver: local
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
