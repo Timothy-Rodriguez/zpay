@@ -2,6 +2,9 @@ server:
   port: 8000
   env: development
 
+jwt:
+  expiration: 3600
+
 database:
   host: localhost
   port: 5432

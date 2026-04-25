@@ -57,9 +57,17 @@ func main() {
 		}
 	}()
 
+	// Initialize JWT
+	secret, err := os.ReadFile("./secret/jwt-secret.txt")
+	if err != nil {
+		logger.Fatal("error reading jwt secret", zap.Error(err))
+	}
+	jwt := pkg.NewJWTService(secret)
+
 	// Create App
 	app := &model.App{
 		DB:     db,
+		JWT:    jwt,
 		Redis:  redisClient,
 		Logger: logger,
 	}

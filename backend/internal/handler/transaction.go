@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"zpay/internal/constants"
 	"zpay/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -65,19 +66,19 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	// Check if idempotency key exists in Redis
 	ctx := context.Background()
 	redisKey := fmt.Sprintf("idempotency:%s", idempotencyKey)
+	var transactionStatus model.TransactionStatus
 
 	// Check if idempotency key exists in Redis
 	result, err := t.App.Redis.Get(ctx, redisKey).Result()
 	if err == nil {
 		// Key exists, return stored transaction
-		var txnResponse model.TranactionRequest
-		if err := json.Unmarshal([]byte(result), &txnResponse); err != nil {
+		if err := json.Unmarshal([]byte(result), &transactionStatus); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "failed to deserialize cached transaction",
 			})
 			return
 		}
-		c.JSON(http.StatusOK, txnResponse)
+		c.JSON(http.StatusOK, transactionStatus)
 		return
 	}
 
@@ -90,10 +91,17 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	}
 
 	// Validate emails
-	transactionReq.FromEmail = strings.TrimSpace(transactionReq.FromEmail)
+	fromEmail, exists := c.Get(constants.ClaimsEmail)
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "missing claims, please raise issue with this response",
+		})
+		return
+	}
+
 	transactionReq.ToEmail = strings.TrimSpace(transactionReq.ToEmail)
 
-	if transactionReq.FromEmail == transactionReq.ToEmail {
+	if fromEmail.(string) == transactionReq.ToEmail {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "from and to emails cannot be the same",
 		})
@@ -110,7 +118,7 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	// Process transaction with DB transaction
 	if err := t.App.DB.ProcessTransaction(
 		context.Background(),
-		transactionReq.FromEmail,
+		fromEmail.(string),
 		transactionReq.ToEmail,
 		transactionReq.Amount,
 	); err != nil {
@@ -120,22 +128,32 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		return
 	}
 
+	transactionStatus = model.TransactionStatus{
+		Message:        "transaction completed successfully",
+		From:           fromEmail.(string),
+		To:             transactionReq.ToEmail,
+		Amount:         transactionReq.Amount.String(),
+		IdempotencyKey: idempotencyKey,
+		Timestamp:      time.Now().String(),
+	}
+	var transactionStatusBytes []byte
+	if transactionStatusBytes, err = json.Marshal(transactionStatus); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
 	// Store idempotency key in Redis with 24-hour TTL
 	err = t.App.Redis.Set(
 		ctx,
 		redisKey,
-		"processed",
+		string(transactionStatusBytes),
 		24*time.Hour,
 	).Err()
 	if err != nil {
 		t.App.Logger.Error(fmt.Sprintf("failed to store idempotency key in redis: %v", err))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":         "transaction completed successfully",
-		"from":            transactionReq.FromEmail,
-		"to":              transactionReq.ToEmail,
-		"amount":          transactionReq.Amount.String(),
-		"idempotency_key": idempotencyKey,
-	})
+	c.JSON(http.StatusOK, transactionStatus)
 }

@@ -7,15 +7,20 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-}
-
 type ServerConfig struct {
 	Port int
 	Env  string
+}
+
+type JWTConfig struct {
+	Expiration int
+}
+
+type Config struct {
+	JWT      JWTConfig
+	Server   ServerConfig
+	Database DatabaseConfig
+	Redis    RedisConfig
 }
 
 type DatabaseConfig struct {

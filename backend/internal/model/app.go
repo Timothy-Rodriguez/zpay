@@ -7,6 +7,7 @@ import (
 
 type App struct {
 	Logger *pkg.Logger
-	DB     *database.DB
+	JWT    pkg.JWTService
+	DB     database.DatabaseClient
 	Redis  *pkg.Redis
 }

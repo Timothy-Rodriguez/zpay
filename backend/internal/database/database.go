@@ -20,6 +20,7 @@ type DatabaseClient interface {
 
 	// Users table functions
 	CreateUser(email, password string) error
+	CheckLoginAndStoreRefreshToken(ctx context.Context, email string, password string, refreshToken string) (bool, error)
 
 	// Transactions table functions
 	UpdateBalace(email string, amount decimal.Decimal) error
@@ -69,6 +70,7 @@ func (db *DB) InitializeTables(ctx context.Context) error {
 		id SERIAL PRIMARY KEY,
 		email VARCHAR(255) UNIQUE NOT NULL,
 		password VARCHAR(255) NOT NULL,
+		refresh_token VARCHAR(255),
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
