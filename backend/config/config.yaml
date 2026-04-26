@@ -19,3 +19,26 @@ redis:
   port: 6379
   password: ""
   db: 0
+
+kafka:
+  brokers: ["localhost:9092"]
+  client_id: "payment_audit_service"
+  producer:
+    topic: "payment-audit"
+    timeout: 10s
+  consumer:
+    topic: "payment-audit"
+    group_id: "payment_audit_service_group"
+
+smtp:
+  enabled: true
+  host: "smtp.gmail.com"
+  port: 587
+  username: "mtimothyrodriguez2000@gmail.com"
+  password: "ouee htiz oodw lugk"
+  from: "noreply@zpay.io"
+
+outbox:
+  poll_interval: 5s
+  batch_size: 100
+  max_retries: 5

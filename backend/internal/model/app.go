@@ -10,4 +10,5 @@ type App struct {
 	JWT    pkg.JWTService
 	DB     database.DatabaseClient
 	Redis  *pkg.Redis
+	Kafka  pkg.KafkaClient
 }

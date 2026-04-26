@@ -37,8 +37,8 @@ func (db *DB) ProcessTransaction(
 	}
 	defer tx.Rollback(ctx)
 
-	// Get from account ID
-	var fromAccountID int
+	// Get both account IDs
+	var fromAccountID, toAccountID int
 	err = tx.QueryRow(
 		ctx,
 		`SELECT id FROM accounts WHERE email = $1`,
@@ -51,8 +51,6 @@ func (db *DB) ProcessTransaction(
 		return fmt.Errorf("failed to fetch from account: %w", err)
 	}
 
-	// Get to account ID
-	var toAccountID int
 	err = tx.QueryRow(
 		ctx,
 		`SELECT id FROM accounts WHERE email = $1`,
@@ -65,17 +63,41 @@ func (db *DB) ProcessTransaction(
 		return fmt.Errorf("failed to fetch to account: %w", err)
 	}
 
-	// Check if from account has sufficient balance (with lock)
-	var fromBalance decimal.Decimal
+	// Lock both accounts in deterministic order (by ID)
+	// Always lock the lower ID first
+	firstAccountID := fromAccountID
+	secondAccountID := toAccountID
+	if firstAccountID > secondAccountID {
+		firstAccountID, secondAccountID = secondAccountID, firstAccountID
+	}
+
+	// Fetch both balances with locks in deterministic order
+	var fromBalance, toBalance decimal.Decimal
+
 	err = tx.QueryRow(
 		ctx,
 		`SELECT balance FROM accounts WHERE id = $1 FOR UPDATE`,
-		fromAccountID,
+		firstAccountID,
 	).Scan(&fromBalance)
 	if err != nil {
-		return fmt.Errorf("failed to fetch from account balance: %w", err)
+		return fmt.Errorf("failed to fetch first account balance: %w", err)
 	}
 
+	err = tx.QueryRow(
+		ctx,
+		`SELECT balance FROM accounts WHERE id = $1 FOR UPDATE`,
+		secondAccountID,
+	).Scan(&toBalance)
+	if err != nil {
+		return fmt.Errorf("failed to fetch second account balance: %w", err)
+	}
+
+	// Reassign based on original from/to relationship
+	if fromAccountID > toAccountID {
+		fromBalance, toBalance = toBalance, fromBalance
+	}
+
+	// Check if from account has sufficient balance
 	if fromBalance.LessThan(amount) {
 		return fmt.Errorf("insufficient balance")
 	}
@@ -103,15 +125,39 @@ func (db *DB) ProcessTransaction(
 	}
 
 	// Record transaction
-	_, err = tx.Exec(
+	var transactionID int
+	err = tx.QueryRow(
 		ctx,
-		`INSERT INTO transactions (from_account, to_account, amount) VALUES ($1, $2, $3)`,
+		`INSERT INTO payments (from_account, to_account, amount) 
+         VALUES ($1, $2, $3) RETURNING id`,
 		fromAccountID,
 		toAccountID,
 		amount.String(),
-	)
+	).Scan(&transactionID)
 	if err != nil {
 		return fmt.Errorf("failed to record transaction: %w", err)
+	}
+
+	// Insert into payment outbox
+	payload := fmt.Sprintf(
+		`{"transactionId": %d, "fromAccount": %d, "toAccount": %d, "amount": "%s", "fromEmail": "%s", "toEmail": "%s"}`,
+		transactionID, fromAccountID, toAccountID, amount.String(), fromEmail, toEmail,
+	)
+
+	_, err = tx.Exec(
+		ctx,
+		`INSERT INTO payment_outbox (transaction_id, from_account, to_account, amount, event_type, status, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		transactionID,
+		fromAccountID,
+		toAccountID,
+		amount.String(),
+		"PAYMENT_COMPLETED",
+		"PENDING",
+		payload,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert outbox record: %w", err)
 	}
 
 	// Commit transaction

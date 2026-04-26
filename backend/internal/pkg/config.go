@@ -3,6 +3,7 @@ package pkg
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -14,13 +15,6 @@ type ServerConfig struct {
 
 type JWTConfig struct {
 	Expiration int
-}
-
-type Config struct {
-	JWT      JWTConfig
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
 }
 
 type DatabaseConfig struct {
@@ -38,6 +32,38 @@ type RedisConfig struct {
 	Port     int
 	Password string
 	DB       int
+}
+
+type KafkaConfig struct {
+	Brokers  []string `mapstructure:"brokers"`
+	ClientID string   `mapstructure:"client_id"`
+	Producer struct {
+		Topic   string        `mapstructure:"topic"`
+		Timeout time.Duration `mapstructure:"timeout"`
+	} `mapstructure:"producer"`
+	Consumer struct {
+		Topic   string `mapstructure:"topic"`
+		GroupID string `mapstructure:"group_id"`
+	} `mapstructure:"consumer"`
+}
+
+type SMTPConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	From     string `mapstructure:"from"`
+}
+
+// Config
+type Config struct {
+	JWT      JWTConfig
+	Server   ServerConfig
+	Database DatabaseConfig
+	Redis    RedisConfig
+	Kafka    KafkaConfig
+	SMTP     SMTPConfig
 }
 
 func LoadConfig(configPath string) (*Config, error) {
