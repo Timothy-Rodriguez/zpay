@@ -15,10 +15,10 @@ type EmailClient interface {
 
 type smtpClient struct {
 	config *pkg.SMTPConfig
-	logger *pkg.Logger
+	logger *pkg.StructuredLogger
 }
 
-func NewEmailClient(cfg *pkg.SMTPConfig, logger *pkg.Logger) (EmailClient, error) {
+func NewEmailClient(cfg *pkg.SMTPConfig, logger *pkg.StructuredLogger) (EmailClient, error) {
 	if !cfg.Enabled {
 		return &noOpEmailClient{}, nil
 	}

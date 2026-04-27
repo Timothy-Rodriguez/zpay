@@ -63,3 +63,21 @@ func (db *DB) CheckLoginAndStoreRefreshToken(ctx context.Context, email string, 
 
 	return true, nil
 }
+
+// Get refresh token from database
+func (db *DB) GetRefreshToken(ctx context.Context, email string) (string, error) {
+	var token string
+	query := `SELECT refresh_token FROM users WHERE email = $1`
+	err := db.Pool.QueryRow(ctx, query, email).Scan(&token)
+	if err != nil {
+		return "", fmt.Errorf("failed to get refresh token: %w", err)
+	}
+	return token, nil
+}
+
+// Clear refresh token (logout)
+func (db *DB) ClearRefreshToken(ctx context.Context, email string) error {
+	query := `UPDATE users SET refresh_token = NULL WHERE email = $1`
+	_, err := db.Pool.Exec(ctx, query, email)
+	return err
+}

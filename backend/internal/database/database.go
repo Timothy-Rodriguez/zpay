@@ -11,7 +11,7 @@ import (
 
 type DB struct {
 	Pool   *pgxpool.Pool
-	Logger *pkg.Logger
+	Logger *pkg.StructuredLogger
 }
 
 type DatabaseClient interface {
@@ -21,6 +21,8 @@ type DatabaseClient interface {
 	// Users table functions
 	CreateUser(email, password string) error
 	CheckLoginAndStoreRefreshToken(ctx context.Context, email string, password string, refreshToken string) (bool, error)
+	GetRefreshToken(ctx context.Context, email string) (string, error)
+	ClearRefreshToken(ctx context.Context, email string) error
 
 	// Payments table functions
 	UpdateBalace(email string, amount decimal.Decimal) error

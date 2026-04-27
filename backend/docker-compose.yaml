@@ -78,6 +78,78 @@ services:
       - zpay
     command: redis-server --appendonly yes
 
+  # Loki: Log aggregation and storage
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: zpay-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-storage:/loki
+    networks:
+      - zpay
+
+  # Promtail: Log shipper that collects logs and sends to Loki
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: zpay-promtail
+    ports:
+      - "9080:9080"
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./config/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - ./logs:/var/log/zpay:ro
+    depends_on:
+      - loki
+    networks:
+      - zpay
+
+  # Grafana: Visualization and querying
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: zpay-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - zpay
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: zpay-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-storage:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    networks:
+      - zpay
+  
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: zpay-jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    volumes:
+      - jaeger-storage:/tmp
+    networks:
+      - zpay
+
 networks:
   zpay:
     driver: bridge
@@ -89,3 +161,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
+  loki-storage:
+  grafana-storage:
+  prometheus-storage:
+  jaeger-storage:

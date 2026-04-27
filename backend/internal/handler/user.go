@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,9 +26,18 @@ func NewUserHandler(app *model.App) *UserHandler {
 }
 
 func (u *UserHandler) CreateUser(c *gin.Context) {
+	ctx, span := u.App.Tracer.Start(c.Request.Context(), "user.create")
+	defer span.End()
+
 	var createUserRequest model.CreateUserRequest
 
 	if err := c.ShouldBindJSON(&createUserRequest); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid request body")
+		u.App.Logger.Warn("create_user_invalid_body",
+			"http_path", c.FullPath(),
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid request body",
 		})
@@ -34,36 +45,87 @@ func (u *UserHandler) CreateUser(c *gin.Context) {
 	}
 
 	createUserRequest.Email = strings.TrimSpace(createUserRequest.Email)
+	span.SetAttributes(
+		attribute.String("user.email", createUserRequest.Email),
+	)
 	if createUserRequest.Email == "" {
+		span.SetStatus(codes.Error, "missing email")
+		u.App.Logger.Warn("create_user_missing_email",
+			"http_path", c.FullPath(),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "email is required",
 		})
 		return
 	}
 
+	hashCtx, hashSpan := u.App.Tracer.Start(ctx, "user.hash_password")
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(createUserRequest.Password), bcrypt.DefaultCost)
 	if err != nil {
+		hashSpan.RecordError(err)
+		hashSpan.SetStatus(codes.Error, "password hash failed")
+		hashSpan.End()
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "password hash failed")
+
+		u.App.Logger.Error("create_user_hash_failed",
+			"email", createUserRequest.Email,
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "failed to hash password",
 		})
 		return
 	}
+	hashSpan.End()
 
+	dbCtx, dbSpan := u.App.Tracer.Start(hashCtx, "db.create_user")
 	if err := u.App.DB.CreateUser(createUserRequest.Email, string(hashedPassword)); err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "db create user failed")
+		dbSpan.End()
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "db create user failed")
+
+		u.App.Logger.Error("create_user_db_failed",
+			"email", createUserRequest.Email,
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "failed to create user",
 		})
 		return
 	}
+	dbSpan.End()
 
 	// Set default balance
+	_, balanceSpan := u.App.Tracer.Start(dbCtx, "db.init_user_balance")
 	defaultBalance, _ := decimal.NewFromString("1000")
 	if err := u.App.DB.UpdateBalace(createUserRequest.Email, defaultBalance); err != nil {
+		balanceSpan.RecordError(err)
+		balanceSpan.SetStatus(codes.Error, "init balance failed")
+		balanceSpan.End()
+
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "init balance failed")
+
+		u.App.Logger.Error("create_user_balance_init_failed",
+			"email", createUserRequest.Email,
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "user created but failed to initialize account balance",
 		})
 		return
 	}
+	balanceSpan.End()
+
+	span.SetStatus(codes.Ok, "user created")
+	u.App.Logger.Info("create_user_success",
+		"email", createUserRequest.Email,
+	)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "user created successfully",

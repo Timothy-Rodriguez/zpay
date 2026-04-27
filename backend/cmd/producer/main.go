@@ -36,16 +36,16 @@ func main() {
 	}
 
 	// Initialize logger
-	logger, err := pkg.NewLogger(cfg.Server.Env)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			logger.Error("Error syncing logger", zap.Error(err))
-		}
-	}()
+	logger := pkg.NewStructuredLogger("kafka-producer")
+	// if err != nil {
+	// 	fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+	// 	os.Exit(1)
+	// }
+	// defer func() {
+	// 	if err := logger.Sync(); err != nil {
+	// 		logger.Error("Error syncing logger", zap.Error(err))
+	// 	}
+	// }()
 
 	logger.Info("Starting Payment Outbox Producer", zap.String("env", cfg.Server.Env))
 
@@ -67,7 +67,7 @@ func main() {
 		cfg.Kafka.Consumer.Topic,
 	)
 	if err != nil {
-		logger.Fatal("Failed to initialize Kafka client", zap.Error(err))
+		log.Fatal("Failed to initialize Kafka client", zap.Error(err))
 	}
 	defer kafkaClient.Close()
 
