@@ -12,7 +12,7 @@ It includes:
 - an audit trail and email notification flow
 - observability with Loki, Prometheus, Grafana, OpenTelemetry, and Jaeger
 
-## Why This Project Is Interesting
+## Project Overview
 
 This project is intentionally designed around backend reliability and operational best practices rather than only CRUD features.
 
