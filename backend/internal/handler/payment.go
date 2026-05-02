@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,8 +26,13 @@ func NewTranactionHandler(app *model.App) *TranactionHandler {
 }
 
 func (t *TranactionHandler) UpdateBalace(c *gin.Context) {
+	ctx, span := t.App.Tracer.Start(c.Request.Context(), "update.balance")
+	defer span.End()
+
 	email := strings.TrimSpace(c.Query("email"))
 	if email == "" {
+		span.RecordError(fmt.Errorf("empty email address"))
+		span.SetStatus(codes.Error, "email is required")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "email is required",
 		})
@@ -37,19 +41,24 @@ func (t *TranactionHandler) UpdateBalace(c *gin.Context) {
 
 	updatedBalance, err := decimal.NewFromString(c.Query("balance"))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid balance")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid balance",
 		})
 		return
 	}
 
-	if err := t.App.DB.UpdateBalace(email, updatedBalance); err != nil {
+	if err := t.App.DB.UpdateBalace(ctx, email, updatedBalance); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "failed to update balance")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "failed to update balance",
 		})
 		return
 	}
 
+	span.SetStatus(codes.Ok, "balance updated")
 	c.JSON(http.StatusOK, gin.H{
 		"data": "balance updated",
 	})
@@ -78,11 +87,10 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	redisKey := fmt.Sprintf("idempotency:%s", idempotencyKey)
 	var transactionStatus model.TransactionStatus
 
-	redisGetCtx, redisGetSpan := t.App.Tracer.Start(ctx, "redis.get_idempotency")
-	result, err := t.App.Redis.Get(context.Background(), redisKey).Result()
+	result, err := t.App.Redis.Get(ctx, redisKey).Result()
 	if err == nil {
-		redisGetSpan.SetStatus(codes.Ok, "idempotency hit")
-		redisGetSpan.End()
+		span.SetStatus(codes.Ok, "idempotency hit")
+		span.End()
 
 		// Key exists, return stored transaction
 		if err := json.Unmarshal([]byte(result), &transactionStatus); err != nil {
@@ -106,7 +114,6 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		c.JSON(http.StatusOK, transactionStatus)
 		return
 	}
-	redisGetSpan.End()
 
 	var transactionReq model.TranactionRequest
 	if err := c.ShouldBindJSON(&transactionReq); err != nil {
@@ -175,16 +182,15 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	}
 
 	// Process transaction with DB transaction
-	dbCtx, dbSpan := t.App.Tracer.Start(redisGetCtx, "db.process_transaction")
 	if err := t.App.DB.ProcessTransaction(
-		context.Background(),
+		ctx,
 		fromEmail.(string),
 		transactionReq.ToEmail,
 		transactionReq.Amount,
 	); err != nil {
-		dbSpan.RecordError(err)
-		dbSpan.SetStatus(codes.Error, "db transaction failed")
-		dbSpan.End()
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "db transaction failed")
+		span.End()
 
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "db transaction failed")
@@ -200,7 +206,6 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		})
 		return
 	}
-	dbSpan.End()
 
 	transactionStatus = model.TransactionStatus{
 		Message:        "transaction completed successfully",
@@ -225,7 +230,6 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 	}
 
 	// Store idempotency key in Redis with 24-hour TTL
-	_, redisSetSpan := t.App.Tracer.Start(dbCtx, "redis.set_idempotency")
 	err = t.App.Redis.Set(
 		ctx,
 		redisKey,
@@ -233,9 +237,8 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		24*time.Hour,
 	).Err()
 	if err != nil {
-		redisSetSpan.RecordError(err)
-		redisSetSpan.SetStatus(codes.Error, "redis set failed")
-		redisSetSpan.End()
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "redis set failed")
 
 		t.App.Logger.Error("payment_idempotency_store_failed",
 			"idempotency_key", idempotencyKey,
@@ -243,8 +246,7 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		)
 		t.App.Logger.Error(fmt.Sprintf("failed to store idempotency key in redis: %v", err))
 	}
-	redisSetSpan.SetStatus(codes.Ok, "redis set success")
-	redisSetSpan.End()
+	span.SetStatus(codes.Ok, "redis set success")
 
 	t.App.Logger.Info("payment_success",
 		"idempotency_key", idempotencyKey,
@@ -253,4 +255,53 @@ func (t *TranactionHandler) ProcessTransaction(c *gin.Context) {
 		"amount", transactionReq.Amount.String(),
 	)
 	c.JSON(http.StatusOK, transactionStatus)
+}
+
+func (t *TranactionHandler) GetBalance(c *gin.Context) {
+	emailVal, exists := c.Get(constants.ClaimsEmail)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing claims"})
+		return
+	}
+	email, ok := emailVal.(string)
+	if !ok || email == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+		return
+	}
+
+	balance, err := t.App.DB.GetBalance(c.Request.Context(), email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"email":   email,
+		"balance": balance.String(),
+	})
+}
+
+func (t *TranactionHandler) GetTransactions(c *gin.Context) {
+	emailVal, exists := c.Get(constants.ClaimsEmail)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing claims"})
+		return
+	}
+	email, ok := emailVal.(string)
+	if !ok || email == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+		return
+	}
+
+	transactions, err := t.App.DB.GetTransactions(c.Request.Context(), email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"email":        email,
+		"count":        len(transactions),
+		"transactions": transactions,
+	})
 }

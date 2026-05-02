@@ -81,7 +81,7 @@ func (u *UserHandler) CreateUser(c *gin.Context) {
 	hashSpan.End()
 
 	dbCtx, dbSpan := u.App.Tracer.Start(hashCtx, "db.create_user")
-	if err := u.App.DB.CreateUser(createUserRequest.Email, string(hashedPassword)); err != nil {
+	if err := u.App.DB.CreateUser(dbCtx, createUserRequest.Email, string(hashedPassword)); err != nil {
 		dbSpan.RecordError(err)
 		dbSpan.SetStatus(codes.Error, "db create user failed")
 		dbSpan.End()
@@ -103,7 +103,7 @@ func (u *UserHandler) CreateUser(c *gin.Context) {
 	// Set default balance
 	_, balanceSpan := u.App.Tracer.Start(dbCtx, "db.init_user_balance")
 	defaultBalance, _ := decimal.NewFromString("1000")
-	if err := u.App.DB.UpdateBalace(createUserRequest.Email, defaultBalance); err != nil {
+	if err := u.App.DB.UpdateBalace(dbCtx, createUserRequest.Email, defaultBalance); err != nil {
 		balanceSpan.RecordError(err)
 		balanceSpan.SetStatus(codes.Error, "init balance failed")
 		balanceSpan.End()
@@ -133,64 +133,85 @@ func (u *UserHandler) CreateUser(c *gin.Context) {
 }
 
 func (u *UserHandler) LoginUser(c *gin.Context) {
+	ctx, span := u.App.Tracer.Start(c.Request.Context(), "user.login")
+	defer span.End()
+
 	var loginRequest model.LoginRequest
 	if err := c.ShouldBindJSON(&loginRequest); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid request body")
+		u.App.Logger.Warn("login_user_invalid_body",
+			"http_path", c.FullPath(),
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid request body",
 		})
 		return
 	}
 
-	// passwordByte := []byte(loginRequest.Password)
-	// hashedPassword, err := bcrypt.GenerateFromPassword(passwordByte, bcrypt.DefaultCost)
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{})
-	// 	return
-	// }
-
-	// dbPassword, err := u.App.DB.GetUserPassword(loginRequest.Email)
-	// if dbPassword != string(hashedPassword) {
-	// 	c.JSON(http.StatusOK, gin.H{
-	// 		"error": "incorrect email or password",
-	// 	})
-	// 	return
-	// }
+	span.SetAttributes(
+		attribute.String("user.email", loginRequest.Email),
+	)
 
 	userClaims := make(map[string]interface{})
 	userClaims[constants.ClaimsEmail] = loginRequest.Email
 
-	accessToken, err := u.App.JWT.GenerateToken(userClaims, time.Minute*5)
+	accessToken, err := u.App.JWT.GenerateToken(userClaims, time.Second*5)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		u.App.Logger.Warn("error_creating_token",
+			"http_path", c.FullPath(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
 	}
 
-	refreshToken, err := u.App.JWT.GenerateToken(userClaims, time.Minute*30)
+	refreshClaims := make(map[string]interface{})
+	refreshClaims[constants.ClaimsEmail] = loginRequest.Email
+	refreshToken, err := u.App.JWT.GenerateToken(refreshClaims, time.Minute*30) // 30 minutes for testing
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		u.App.Logger.Warn("error_creating_token",
+			"http_path", c.FullPath(),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{})
 		return
 	}
 
 	// Check login and store refresh token
+	_, dbSpan := u.App.Tracer.Start(ctx, "db.login_user")
 	var loggedIn bool
 	if loggedIn, err = u.App.DB.CheckLoginAndStoreRefreshToken(context.Background(), loginRequest.Email, loginRequest.Password, refreshToken); err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "db error while login")
+		dbSpan.End()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
 	if !loggedIn {
+		dbSpan.End()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "incorrect id/password",
 		})
 		return
 	}
+	dbSpan.End()
 
-	u.setCookie(c, constants.JwtToken, accessToken, time.Minute*5)
-	u.setCookie(c, constants.RefrestToken, refreshToken, time.Minute*30)
+	u.setCookie(c, constants.JwtToken, accessToken, time.Second*5)
+	u.setCookie(c, constants.RefrestToken, refreshToken, time.Minute*30) // 30 minutes for testing
 
+	span.SetStatus(codes.Ok, "user logged in")
+	u.App.Logger.Info("user_logged_in",
+		"email", loginRequest.Email,
+	)
 	c.JSON(http.StatusOK, gin.H{
-		"status": "logged in",
+		"status":        "logged in",
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"token_type":    "Bearer",
 	})
 }
 
@@ -227,24 +248,26 @@ func (u *UserHandler) LogoutUser(c *gin.Context) {
 // Refresh endpoint - validates refresh token and returns new access token
 func (u *UserHandler) RefreshToken(c *gin.Context) {
 
-	// Try to get refresh token from Authorization header first
-	refreshToken := c.GetString("refresh_token")
-
-	// If not in header, try from cookie
-	if refreshToken == "" {
-		var err error
-		refreshToken, err = c.Cookie(constants.RefrestToken)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "refresh token not provided",
-			})
-			return
-		}
+	refreshToken, err := c.Cookie(constants.RefrestToken)
+	if err != nil {
+		u.App.Logger.Error("refresh_no_cookie",
+			"error", err.Error(),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "refresh token not provided",
+		})
+		return
 	}
+	u.App.Logger.Info("refresh_token_received",
+		"token_length", len(refreshToken),
+	)
 
 	// Validate refresh token
 	claims, err := u.App.JWT.ValidateToken(refreshToken)
 	if err != nil {
+		u.App.Logger.Error("refresh_validation_failed",
+			"error", err.Error(),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "invalid or expired refresh token",
 		})
@@ -273,7 +296,7 @@ func (u *UserHandler) RefreshToken(c *gin.Context) {
 	accessTokenClaims := make(map[string]interface{})
 	accessTokenClaims[constants.ClaimsEmail] = email
 
-	newAccessToken, err := u.App.JWT.GenerateToken(accessTokenClaims, time.Minute*5)
+	newAccessToken, err := u.App.JWT.GenerateToken(accessTokenClaims, time.Second*5)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "failed to generate access token",
@@ -282,11 +305,10 @@ func (u *UserHandler) RefreshToken(c *gin.Context) {
 	}
 
 	// Set cookie if client is browser-based
-	u.setCookie(c, constants.JwtToken, newAccessToken, time.Minute*5)
+	u.setCookie(c, constants.JwtToken, newAccessToken, time.Second*5)
 
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": newAccessToken,
-		"expires_in":   300, // 5 minutes in seconds
 		"token_type":   "Bearer",
 	})
 }

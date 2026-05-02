@@ -20,8 +20,7 @@ export default function Navbar() {
         {user ? (
           <>
             <NavLink to="/dashboard">Dashboard</NavLink>
-            <NavLink to="/add-credits">Add Credits</NavLink>
-            <NavLink to="/pay">Pay</NavLink>
+            <NavLink to="/payment">Pay</NavLink>
             <NavLink to="/transactions">Transactions</NavLink>
             <NavLink to="/profile">Profile</NavLink>
             <button className="btn btn-ghost" onClick={handleSignOut}>
@@ -31,8 +30,9 @@ export default function Navbar() {
         ) : (
           <>
             <NavLink to="/">Home</NavLink>
-            <NavLink to="/signin" className="btn btn-primary">
-              Sign in
+            <NavLink to="/create-user">Sign up</NavLink>
+            <NavLink to="/login-user" className="btn btn-primary">
+              Log in
             </NavLink>
           </>
         )}

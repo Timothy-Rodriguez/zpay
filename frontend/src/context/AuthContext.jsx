@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { api } from '../utils/api.js'
 
 const AuthContext = createContext(null)
 
@@ -17,26 +18,52 @@ export function AuthProvider({ children }) {
     else localStorage.removeItem('zpay_user')
   }, [user])
 
-  // Passwordless sign-in: simulates sending a magic link and immediately
-  // authenticates the user. In production replace with real magic-link flow.
+  const buildUser = (email) => {
+    const name = email.split('@')[0].replace(/[._-]+/g, ' ')
+    return {
+      email,
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      joinedAt: new Date().toISOString(),
+    }
+  }
+
+  // Sign up via backend /signup. Does not auto-login.
+  const signUp = async (email, password) => {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      throw new Error('Please enter a valid email address')
+    }
+    await api.signup(email, password)
+    return true
+  }
+
+  // Login via backend /login. Backend sets HttpOnly cookies; we mirror the
+  // user identity locally so the React app knows who is signed in.
+  const login = async (email, password) => {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      throw new Error('Please enter a valid email address')
+    }
+    await api.login(email, password)
+    setUser(buildUser(email))
+    return true
+  }
+
+  // Legacy passwordless sign-in kept so the existing /signin page works.
   const signIn = async (email) => {
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
       throw new Error('Please enter a valid email address')
     }
     await new Promise((r) => setTimeout(r, 600))
-    const name = email.split('@')[0].replace(/[._-]+/g, ' ')
-    setUser({
-      email,
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      joinedAt: new Date().toISOString(),
-    })
+    setUser(buildUser(email))
     return true
   }
 
-  const signOut = () => setUser(null)
+  const signOut = () => {
+    api.logout()
+    setUser(null)
+  }
 
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, signUp, login, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

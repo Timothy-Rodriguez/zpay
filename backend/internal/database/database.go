@@ -7,11 +7,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type DB struct {
 	Pool   *pgxpool.Pool
 	Logger *pkg.StructuredLogger
+	Tracer trace.Tracer
 }
 
 type DatabaseClient interface {
@@ -19,14 +22,16 @@ type DatabaseClient interface {
 	Close()
 
 	// Users table functions
-	CreateUser(email, password string) error
+	CreateUser(ctx context.Context, email, password string) error
 	CheckLoginAndStoreRefreshToken(ctx context.Context, email string, password string, refreshToken string) (bool, error)
 	GetRefreshToken(ctx context.Context, email string) (string, error)
 	ClearRefreshToken(ctx context.Context, email string) error
 
 	// Payments table functions
-	UpdateBalace(email string, amount decimal.Decimal) error
+	UpdateBalace(ctx context.Context, email string, amount decimal.Decimal) error
 	ProcessTransaction(ctx context.Context, fromEmail string, toEmail string, amount decimal.Decimal) error
+	GetBalance(ctx context.Context, email string) (decimal.Decimal, error)
+	GetTransactions(ctx context.Context, email string) ([]Transaction, error)
 
 	// Outbox table functions
 	GetPendingOutboxRecords(ctx context.Context, batchSize int) ([]*PaymentOutboxEvent, error)
@@ -60,7 +65,7 @@ func NewDB(cfg *pkg.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	db := &DB{Pool: pool}
+	db := &DB{Pool: pool, Tracer: otel.Tracer("zpay-backend.db")}
 
 	// Initialize tables
 	if err := db.InitializeTables(context.Background()); err != nil {

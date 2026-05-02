@@ -1,10 +1,31 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext.jsx'
-import { useWallet } from '../context/WalletContext.jsx'
+import { api } from '../utils/api.js'
 import { formatCurrency, formatDate } from '../utils/format.js'
 
 export default function Profile() {
   const { user, signOut } = useAuth()
-  const { credits, transactions } = useWallet()
+  const [balance, setBalance] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        setLoading(true)
+        setError('')
+        const data = await api.getBalance()
+        if (data && data.balance) {
+          setBalance(data.balance)
+        }
+      } catch (err) {
+        setError(err.message || 'Failed to load balance')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchBalance()
+  }, [])
 
   return (
     <section className="page narrow">
@@ -21,16 +42,14 @@ export default function Profile() {
         </div>
       </div>
 
+      {error && <div className="alert error">{error}</div>}
+
       <div className="panel">
         <h3>Wallet summary</h3>
         <div className="kv">
           <div>
             <span className="muted">Available credits</span>
-            <strong>{formatCurrency(credits)}</strong>
-          </div>
-          <div>
-            <span className="muted">Transactions</span>
-            <strong>{transactions.length}</strong>
+            <strong>{loading ? '...' : formatCurrency(balance || 0)}</strong>
           </div>
         </div>
       </div>

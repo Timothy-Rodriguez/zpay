@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type RedisClient interface {
@@ -17,6 +19,7 @@ type RedisClient interface {
 
 type Redis struct {
 	Client *redis.Client
+	Tracer trace.Tracer
 }
 
 func NewRedis(cfg RedisConfig) (*Redis, error) {
@@ -31,14 +34,18 @@ func NewRedis(cfg RedisConfig) (*Redis, error) {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	return &Redis{Client: client}, nil
+	return &Redis{Client: client, Tracer: otel.Tracer("zpay-backend.redis")}, nil
 }
 
 func (r *Redis) Set(ctx context.Context, key string, value any, expiration time.Duration) *redis.StatusCmd {
+	_, redisSpan := r.Tracer.Start(ctx, "redis.set")
+	defer redisSpan.End()
 	return r.Client.Set(ctx, key, value, expiration)
 }
 
 func (r *Redis) Get(ctx context.Context, key string) *redis.StringCmd {
+	_, redisSpan := r.Tracer.Start(ctx, "redis.get")
+	defer redisSpan.End()
 	return r.Client.Get(ctx, key)
 }
 

@@ -3,12 +3,23 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
-func (db *DB) UpdateBalace(email string, amount decimal.Decimal) error {
+func (db *DB) UpdateBalace(ctx context.Context, email string, amount decimal.Decimal) error {
+	_, dbSpan := db.Tracer.Start(ctx, "db.init_user_balance")
+	defer dbSpan.End()
+
+	dbSpan.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+	)
+
 	query := `
         INSERT INTO accounts (email, balance)
         VALUES ($1, $2)
@@ -19,9 +30,12 @@ func (db *DB) UpdateBalace(email string, amount decimal.Decimal) error {
     `
 
 	if _, err := db.Pool.Exec(context.Background(), query, email, amount.String()); err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "update balance failed")
 		return fmt.Errorf("failed to update balance for %s: %w", email, err)
 	}
 
+	dbSpan.SetStatus(codes.Ok, "update balance success")
 	return nil
 }
 
@@ -31,8 +45,18 @@ func (db *DB) ProcessTransaction(
 	toEmail string,
 	amount decimal.Decimal,
 ) error {
+	_, dbSpan := db.Tracer.Start(ctx, "db.init_user_transaction")
+	defer dbSpan.End()
+
+	dbSpan.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "UPDATE"),
+	)
+
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to begin transaction")
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
@@ -46,6 +70,8 @@ func (db *DB) ProcessTransaction(
 	).Scan(&fromAccountID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			dbSpan.RecordError(err)
+			dbSpan.SetStatus(codes.Error, "from account not found")
 			return fmt.Errorf("from account not found")
 		}
 		return fmt.Errorf("failed to fetch from account: %w", err)
@@ -58,6 +84,8 @@ func (db *DB) ProcessTransaction(
 	).Scan(&toAccountID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			dbSpan.RecordError(err)
+			dbSpan.SetStatus(codes.Error, "to account not found")
 			return fmt.Errorf("to account not found")
 		}
 		return fmt.Errorf("failed to fetch to account: %w", err)
@@ -80,6 +108,8 @@ func (db *DB) ProcessTransaction(
 		firstAccountID,
 	).Scan(&fromBalance)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to fetch first account balance")
 		return fmt.Errorf("failed to fetch first account balance: %w", err)
 	}
 
@@ -89,6 +119,8 @@ func (db *DB) ProcessTransaction(
 		secondAccountID,
 	).Scan(&toBalance)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to fetch second account balance")
 		return fmt.Errorf("failed to fetch second account balance: %w", err)
 	}
 
@@ -99,6 +131,8 @@ func (db *DB) ProcessTransaction(
 
 	// Check if from account has sufficient balance
 	if fromBalance.LessThan(amount) {
+		dbSpan.RecordError(fmt.Errorf("insufficient balance"))
+		dbSpan.SetStatus(codes.Error, "insufficient balance")
 		return fmt.Errorf("insufficient balance")
 	}
 
@@ -110,6 +144,8 @@ func (db *DB) ProcessTransaction(
 		fromAccountID,
 	)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to debit from account")
 		return fmt.Errorf("failed to debit from account: %w", err)
 	}
 
@@ -121,6 +157,8 @@ func (db *DB) ProcessTransaction(
 		toAccountID,
 	)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to credit to account")
 		return fmt.Errorf("failed to credit to account: %w", err)
 	}
 
@@ -135,6 +173,8 @@ func (db *DB) ProcessTransaction(
 		amount.String(),
 	).Scan(&transactionID)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to record transaction")
 		return fmt.Errorf("failed to record transaction: %w", err)
 	}
 
@@ -157,13 +197,83 @@ func (db *DB) ProcessTransaction(
 		payload,
 	)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to insert outbox record")
 		return fmt.Errorf("failed to insert outbox record: %w", err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "failed to commit transaction")
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	dbSpan.SetStatus(codes.Ok, "payment success")
 	return nil
+}
+
+// GetBalance returns the account balance for the given email.
+func (db *DB) GetBalance(ctx context.Context, email string) (decimal.Decimal, error) {
+	var balance decimal.Decimal
+	query := `SELECT balance FROM accounts WHERE email = $1`
+	err := db.Pool.QueryRow(ctx, query, email).Scan(&balance)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return decimal.Zero, fmt.Errorf("account not found for email %s", email)
+		}
+		return decimal.Zero, fmt.Errorf("failed to get balance: %w", err)
+	}
+	return balance, nil
+}
+
+// Transaction represents one payment row joined to account emails.
+type Transaction struct {
+	ID        int             `json:"id"`
+	FromEmail string          `json:"from_email"`
+	ToEmail   string          `json:"to_email"`
+	Amount    decimal.Decimal `json:"amount"`
+	Direction string          `json:"direction"` // "credit" or "debit"
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// GetTransactions returns all payments where the email is sender or receiver.
+func (db *DB) GetTransactions(ctx context.Context, email string) ([]Transaction, error) {
+	query := `
+        SELECT p.id,
+               fa.email AS from_email,
+               ta.email AS to_email,
+               p.amount,
+               p.created_at
+        FROM payments p
+        JOIN accounts fa ON fa.id = p.from_account
+        JOIN accounts ta ON ta.id = p.to_account
+        WHERE fa.email = $1 OR ta.email = $1
+        ORDER BY p.created_at DESC
+    `
+
+	rows, err := db.Pool.Query(ctx, query, email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query transactions: %w", err)
+	}
+	defer rows.Close()
+
+	transactions := make([]Transaction, 0)
+	for rows.Next() {
+		var t Transaction
+		if err := rows.Scan(&t.ID, &t.FromEmail, &t.ToEmail, &t.Amount, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan transaction: %w", err)
+		}
+		if t.FromEmail == email {
+			t.Direction = "debit"
+		} else {
+			t.Direction = "credit"
+		}
+		transactions = append(transactions, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	return transactions, nil
 }

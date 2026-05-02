@@ -1,6 +1,10 @@
 package model
 
-import "github.com/shopspring/decimal"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 type TranactionRequest struct {
 	ToEmail string          `json:"to_email" binding:"required,email"`
@@ -23,4 +27,13 @@ type TransactionStatus struct {
 	Amount         string `json:"amount"`
 	IdempotencyKey string `json:"key"`
 	Timestamp      string `json:"timestamp"`
+}
+
+type Transaction struct {
+	ID        int             `json:"id"`
+	FromEmail string          `json:"from_email"`
+	ToEmail   string          `json:"to_email"`
+	Amount    decimal.Decimal `json:"amount"`
+	Direction string          `json:"direction"` // "credit" or "debit"
+	CreatedAt time.Time       `json:"created_at"`
 }

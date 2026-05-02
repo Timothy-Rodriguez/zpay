@@ -16,10 +16,15 @@ func SetupRouter(app *model.App) *gin.Engine {
 	// Initilize middleware
 	authMiddleware := middleware.NewAuthHndler(app)
 	loggingMiddleware := middleware.NewLoggingMiddleware(app)
+	corsMiddleware := middleware.NewCORSHandler(app, middleware.DefaultCORSConfig())
 
 	// Initialize handlers
 	userHandler := handler.NewUserHandler(app)
 	transactionHandler := handler.NewTranactionHandler(app)
+
+	// CORS must run before any handler so preflight OPTIONS requests are
+	// answered without authentication.
+	router.Use(corsMiddleware.CORS())
 
 	// Use logging middleware for all endpoints
 	router.Use(loggingMiddleware.Logger())
@@ -39,13 +44,17 @@ func SetupRouter(app *model.App) *gin.Engine {
 		public.GET("/", handler.Public)
 		public.POST("/signup", userHandler.CreateUser)
 		public.POST("/login", userHandler.LoginUser)
+		public.GET("/refresh", userHandler.RefreshToken)
 	}
 
 	// authenticated endpoint group
 	auth := root.Group("/")
 	auth.Use(authMiddleware.AuthMiddleware())
 	{
+		auth.GET("/get-balance", transactionHandler.GetBalance)
+		auth.GET("/get-transactions", transactionHandler.GetTransactions)
 		auth.POST("/payment", transactionHandler.ProcessTransaction)
+		auth.POST("/logout", userHandler.LogoutUser)
 	}
 
 	return router

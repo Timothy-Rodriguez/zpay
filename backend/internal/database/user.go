@@ -5,10 +5,20 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func (db *DB) CreateUser(email, password string) error {
+func (db *DB) CreateUser(ctx context.Context, email, password string) error {
+	_, dbSpan := db.Tracer.Start(ctx, "db.create_user")
+	defer dbSpan.End()
+
+	dbSpan.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "INSERT"),
+	)
+
 	query := `
         INSERT INTO users (email, password)
         VALUES ($1, $2)
@@ -17,6 +27,8 @@ func (db *DB) CreateUser(email, password string) error {
 
 	result, err := db.Pool.Exec(context.Background(), query, email, password)
 	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "insert user failed")
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -24,6 +36,7 @@ func (db *DB) CreateUser(email, password string) error {
 		return fmt.Errorf("user with email %s already exists", email)
 	}
 
+	dbSpan.SetStatus(codes.Ok, "insert user success")
 	return nil
 }
 
