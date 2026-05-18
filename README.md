@@ -1,6 +1,6 @@
 # ZPay
 
-ZPay is a simple fintech application built to demonstrate practical backend design patterns and observability techniques in a payment workflow.
+ZPay is a fintech simulation application built to demonstrate practical backend design patterns and observability techniques in a payment workflow.
 
 It includes:
 
