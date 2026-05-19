@@ -164,6 +164,13 @@ infra:apply:
     - apk add --no-cache openssh-client
     - *ssh_setup
   script:
+    # ── DEBUG: Show runner and server details ──────────────────────────────
+    - echo "=== DEBUG INFO ==="
+    - echo "Runner IP: $(hostname -I | awk '{print $1}')"
+    - echo "SERVER_USER: $SERVER_USER"
+    - echo "SERVER_IP: $SERVER_IP"
+    - echo "==================="
+
     # ── 0. Install cert-manager (idempotent — skips if already installed) ─
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s 2>/dev/null || true"
