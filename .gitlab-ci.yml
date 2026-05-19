@@ -172,6 +172,7 @@ infra:apply:
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s 2>/dev/null || true"
 
     # ── 1. Copy all k8s manifests to the server ───────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "mkdir -p /tmp/zpay-k8s"
     - scp -r k8s/ "$SERVER_USER@$SERVER_IP:/tmp/zpay-k8s/"
 
     # ── 2. Namespace & storage quota ─────────────────────────────────────
@@ -260,6 +261,7 @@ deploy:apps:
     - *ssh_setup
   script:
     # ── 1. Copy app manifests to the server ───────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "mkdir -p /tmp/zpay-k8s"
     - scp -r k8s/ "$SERVER_USER@$SERVER_IP:/tmp/zpay-k8s/"
 
     # ── 2. Apply app deployment manifests (idempotent — creates if missing) ─
