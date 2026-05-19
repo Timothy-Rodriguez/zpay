@@ -1,0 +1,334 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# zpay — GitLab CI/CD  (backend + frontend)
+#
+# Pipeline stages:
+#   test              → run go vet + go test (backend only)
+#   build             → docker build & push all 3 images to GitLab Container Registry
+#   infra             → SSH into server, apply immutable k8s infrastructure
+#                       (runs only on first deploy or when manifest files change)
+#   deploy            → SSH into server, rolling-update the 3 application deployments
+#   deploy-frontend   → deploy frontend to Vercel (runs on frontend/ changes)
+#
+# Required GitLab CI/CD Variables (Settings → CI/CD → Variables — all Masked):
+#   Backend:
+#     SERVER_IP             public or private IP of your k3s server
+#     SERVER_USER           SSH username on that server  (e.g. ubuntu, root)
+#     SSH_PRIVATE_KEY_FILE  private key whose public half is in ~/.ssh/authorized_keys
+#                           on the server. Paste the full PEM including header/footer.
+#     DB_PASSWORD           app database password
+#     SMTP_PASSWORD         Gmail app password
+#     JWT_SECRET            random string used to sign JWT tokens
+#     POSTGRES_PASSWORD     must match DB_PASSWORD
+#     REGISTRY_PULL_USER    GitLab Deploy Token username  (read_registry scope)
+#     REGISTRY_PULL_TOKEN    GitLab Deploy Token value
+#                           Create at: Project → Settings → Repository → Deploy tokens
+#   Frontend:
+#     VERCEL_TOKEN       Vercel authentication token (create at vercel.com/account/tokens)
+#     VERCEL_ORG_ID      Vercel organization/team ID (found in Vercel dashboard)
+#     VERCEL_PROJECT_ID  Vercel project ID (found in project settings)
+#
+# CI_ variables (REGISTRY, REGISTRY_USER, REGISTRY_PASSWORD, COMMIT_SHA, etc.)
+# are provided automatically by GitLab.
+# ─────────────────────────────────────────────────────────────────────────────
+
+stages:
+  - test
+  - build
+  - infra
+  - deploy
+  - deploy-frontend
+
+variables:
+  REGISTRY:       $CI_REGISTRY_IMAGE
+  KUBE_NAMESPACE: prod
+  # Convenience image tags
+  API_IMAGE:      $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA
+  CONSUMER_IMAGE: $CI_REGISTRY_IMAGE/consumer:$CI_COMMIT_SHA
+  PRODUCER_IMAGE: $CI_REGISTRY_IMAGE/producer:$CI_COMMIT_SHA
+
+# ─── DEFAULT ─────────────────────────────────────────────────────────────────
+default:
+  # Stop and run pipelines on new commits
+  interruptible: true
+
+# ─── TEMPLATES ───────────────────────────────────────────────────────────────
+.only_backend: &only_backend
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - backend/**/*
+        - k8s/**/*
+        - .gitlab-ci.yml
+
+# SSH_SETUP: loads the private key into ssh-agent and trusts the server host key.
+# Every job that SSHes into the server calls this anchor in before_script.
+.ssh_setup: &ssh_setup |
+  eval $(ssh-agent -s)
+  cat $SSH_PRIVATE_KEY_FILE | tr -d '\r' | ssh-add -   # ← use file instead
+  mkdir -p ~/.ssh && chmod 700 ~/.ssh
+  ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
+  chmod 644 ~/.ssh/known_hosts
+
+# Shorthand used throughout the jobs below.
+# Usage: $SSH "kubectl get pods -n prod"
+.remote: &remote SERVER_USER=$SERVER_USER SERVER_IP=$SERVER_IP
+
+# ─── STAGE: test ─────────────────────────────────────────────────────────────
+backend:test:
+  stage: test
+  image: golang:1.25-alpine
+  before_script:
+    - apk add --no-cache git
+    - cd backend
+  script:
+    - go vet ./...
+    - go test -race -timeout 120s ./...
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [backend/**/*]
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [backend/**/*]
+  cache:
+    key: go-mod-$CI_COMMIT_REF_SLUG
+    paths:
+      - backend/.go/pkg/mod/
+
+# ─── STAGE: build ────────────────────────────────────────────────────────────
+# Builds all three Docker images in parallel and pushes to the GitLab registry.
+# Uses Docker layer caching from the previous :latest tag to speed up builds.
+
+.docker_build:
+  stage: build
+  image: docker:26
+  services:
+    - docker:26-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  <<: *only_backend
+
+build:api:
+  extends: .docker_build
+  script:
+    - |
+      docker build \
+        --cache-from "$REGISTRY/api:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg BINARY=cmd/main.go \
+        -f backend/Dockerfile \
+        -t "$API_IMAGE" \
+        -t "$REGISTRY/api:latest" \
+        backend/
+    - docker push "$API_IMAGE"
+    - docker push "$REGISTRY/api:latest"
+
+build:consumer:
+  extends: .docker_build
+  script:
+    - |
+      docker build \
+        --cache-from "$REGISTRY/consumer:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg BINARY=cmd/consumer/main.go \
+        -f backend/Dockerfile \
+        -t "$CONSUMER_IMAGE" \
+        -t "$REGISTRY/consumer:latest" \
+        backend/
+    - docker push "$CONSUMER_IMAGE"
+    - docker push "$REGISTRY/consumer:latest"
+
+build:producer:
+  extends: .docker_build
+  script:
+    - |
+      docker build \
+        --cache-from "$REGISTRY/producer:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg BINARY=cmd/producer/main.go \
+        -f backend/Dockerfile \
+        -t "$PRODUCER_IMAGE" \
+        -t "$REGISTRY/producer:latest" \
+        backend/
+    - docker push "$PRODUCER_IMAGE"
+    - docker push "$REGISTRY/producer:latest"
+
+# ─── STAGE: infra ────────────────────────────────────────────────────────────
+# Applies the full k8s infrastructure on the first deploy (or when manifests
+# change). This is idempotent — safe to re-run.
+
+infra:apply:
+  stage: infra
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache openssh-client
+    - *ssh_setup
+  script:
+    # ── 0. Install cert-manager (idempotent — skips if already installed) ─
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s 2>/dev/null || true"
+
+    # ── 1. Copy all k8s manifests to the server ───────────────────────────
+    - scp -r k8s/ "$SERVER_USER@$SERVER_IP:/tmp/zpay-k8s/"
+
+    # ── 2. Namespace & storage quota ─────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/namespace.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/storage-quota.yaml"
+
+    # ── 3. Secrets — piped as YAML via stdin (safe for special characters) ─
+    #    stringData lets Kubernetes handle base64; we never touch the raw values.
+    - |
+      cat <<EOF | ssh "$SERVER_USER@$SERVER_IP" kubectl apply -f -
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: prod-secrets
+        namespace: $KUBE_NAMESPACE
+      type: Opaque
+      stringData:
+        DB_PASSWORD: "${DB_PASSWORD}"
+        SMTP_PASSWORD: "${SMTP_PASSWORD}"
+        jwt-secret.txt: "${JWT_SECRET}"
+      EOF
+    - |
+      cat <<EOF | ssh "$SERVER_USER@$SERVER_IP" kubectl apply -f -
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: postgres-secret
+        namespace: $KUBE_NAMESPACE
+      type: Opaque
+      stringData:
+        POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      EOF
+    # Image pull secret — uses a long-lived GitLab Deploy Token (not the job token)
+    - |
+      ssh "$SERVER_USER@$SERVER_IP" "
+        kubectl create secret docker-registry gitlab-registry \
+          --namespace=$KUBE_NAMESPACE \
+          --docker-server=$CI_REGISTRY \
+          --docker-username=$REGISTRY_PULL_USER \
+          --docker-password=$REGISTRY_PULL_TOKEN \
+          --dry-run=client -o yaml | kubectl apply -f -
+      "
+
+    # ── 4. ConfigMap ──────────────────────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/configmap.yaml"
+
+    # ── 5. Infrastructure (PVCs + Deployments + Services) ────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/postgres/"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/redis/"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/kafka/"
+
+    # ── 6. Observability stack ────────────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/observability/"
+
+    # ── 7. ClusterIssuer & API ingress ────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/selfsigned-issuer.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/api/service.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/api/ingress.yaml"
+    # Give cert-manager time to generate the certificate
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready certificate/prod-api-tls -n $KUBE_NAMESPACE --timeout=60s 2>/dev/null || true"
+
+    # ── 8. Block until core infra is healthy ─────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/postgres -n $KUBE_NAMESPACE --timeout=120s"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/redis    -n $KUBE_NAMESPACE --timeout=120s"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/kafka    -n $KUBE_NAMESPACE --timeout=180s"
+
+    # ── 9. Cleanup temp files ─────────────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf /tmp/zpay-k8s/"
+
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - k8s/**/*
+        - .gitlab-ci.yml
+  needs: []    # infra does not depend on build; it can run in parallel
+
+# ─── STAGE: deploy ───────────────────────────────────────────────────────────
+# Rolling-update the three application pods with the new images.
+# Blocks until each rollout is healthy; fails the pipeline on error.
+
+deploy:apps:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache openssh-client
+    - *ssh_setup
+  script:
+    # ── 1. Copy app manifests to the server ───────────────────────────────
+    - scp -r k8s/ "$SERVER_USER@$SERVER_IP:/tmp/zpay-k8s/"
+
+    # ── 2. Apply app deployment manifests (idempotent — creates if missing) ─
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/api/deployment.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/consumer/deployment.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/producer/deployment.yaml"
+
+    # ── 3. Swap to the new image SHA built in this pipeline ───────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl set image deployment/prod-api      api=$API_IMAGE      -n $KUBE_NAMESPACE"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl set image deployment/prod-consumer consumer=$CONSUMER_IMAGE -n $KUBE_NAMESPACE"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl set image deployment/prod-producer producer=$PRODUCER_IMAGE -n $KUBE_NAMESPACE"
+
+    # ── 4. Audit annotation ───────────────────────────────────────────────
+    - |
+      ssh "$SERVER_USER@$SERVER_IP" "
+        kubectl annotate deployment/prod-api \
+          kubernetes.io/change-cause='pipeline=$CI_PIPELINE_ID commit=$CI_COMMIT_SHORT_SHA' \
+          --overwrite -n $KUBE_NAMESPACE
+      "
+
+    # ── 5. Block until healthy (fails pipeline on bad deploy) ─────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-api      -n $KUBE_NAMESPACE --timeout=180s"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-consumer -n $KUBE_NAMESPACE --timeout=120s"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-producer -n $KUBE_NAMESPACE --timeout=120s"
+
+    # ── 6. Cleanup ────────────────────────────────────────────────────────
+    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf /tmp/zpay-k8s/"
+
+  environment:
+    name: production
+    url: https://api.yourdomain.com
+
+  needs:
+    - build:api
+    - build:consumer
+    - build:producer
+
+  <<: *only_backend
+
+# ─── STAGE: deploy-frontend ──────────────────────────────────────────────────
+# Deploy frontend to Vercel when frontend code changes.
+# Runs independently of backend — don't need backend to change to deploy frontend.
+
+deploy-frontend:
+  stage: deploy-frontend
+  image: node:20-alpine
+  before_script:
+    - npm install -g vercel
+  script:
+    # ── 1. Build frontend ─────────────────────────────────────────────────
+    - cd frontend
+    - npm install
+    - npm run build
+
+    # ── 2. Deploy to Vercel ───────────────────────────────────────────────
+    # On main branch: deploy to production
+    # On other branches: deploy to preview URL
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+        vercel deploy --prod \
+          --token "$VERCEL_TOKEN" \
+          --scope "$VERCEL_ORG_ID"
+      else
+        vercel deploy \
+          --token "$VERCEL_TOKEN" \
+          --scope "$VERCEL_ORG_ID"
+      fi
+  
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [frontend/**/*]
+  
+  environment:
+    name: frontend
+    url: https://zpay.vercel.app

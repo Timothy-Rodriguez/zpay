@@ -1,0 +1,54 @@
+# Production config.yaml mounted into every app pod at /app/config/config.yaml
+# Sensitive values (DB_PASSWORD, SMTP_PASSWORD) are NOT here; they are
+# injected via k8s Secrets as environment variables and picked up by Viper.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prod-config
+  namespace: prod
+data:
+  config.yaml: |
+    server:
+      port: 8000
+      env: production
+
+    jwt:
+      expiration: 3600
+
+    database:
+      host: postgres
+      port: 5432
+      user: zpay
+      password: ""      # overridden by DB_PASSWORD env var at runtime
+      dbname: zpay
+      sslmode: disable
+      maxconns: 25
+
+    redis:
+      host: redis
+      port: 6379
+      password: ""
+      db: 0
+
+    kafka:
+      brokers: ["kafka:9092"]
+      client_id: "payment_audit_service"
+      producer:
+        topic: "payment-audit"
+        timeout: 10s
+      consumer:
+        topic: "payment-audit"
+        group_id: "payment_audit_service_group"
+
+    smtp:
+      enabled: true
+      host: "smtp.gmail.com"
+      port: 587
+      username: "mtimothyrodriguez2000@gmail.com"
+      password: ""      # overridden by SMTP_PASSWORD env var at runtime
+      from: "noreply@zpay.io"
+
+    outbox:
+      poll_interval: 5s
+      batch_size: 100
+      max_retries: 5

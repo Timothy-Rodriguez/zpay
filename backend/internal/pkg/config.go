@@ -75,6 +75,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		log.Printf("Warning: config file not found, using defaults: %v", err)
 	}
 
+	// Allow environment variables to override sensitive config values.
+	// Set DB_PASSWORD and SMTP_PASSWORD as CI/CD secrets; they take
+	// precedence over whatever is written in config.yaml.
+	_ = viper.BindEnv("database.password", "DB_PASSWORD")
+	_ = viper.BindEnv("smtp.password", "SMTP_PASSWORD")
+
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)

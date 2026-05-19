@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +21,21 @@ type CORSConfig struct {
 }
 
 func DefaultCORSConfig() CORSConfig {
+	origins := []string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	}
+	// CORS_ALLOWED_ORIGINS is a comma-separated list of extra origins
+	// (e.g. your Vercel deployment URL). Set it as a k8s env var.
+	if extra := os.Getenv("CORS_ALLOWED_ORIGINS"); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				origins = append(origins, o)
+			}
+		}
+	}
 	return CORSConfig{
-		AllowedOrigins: []string{
-			"http://localhost:5173",
-			"http://127.0.0.1:5173",
-		},
+		AllowedOrigins: origins,
 		AllowedMethods: []string{
 			http.MethodGet,
 			http.MethodPost,

@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# CI/CD
+.gitlab-ci.yml
+
+# Local dev files
+docker-compose.yaml
+logs/
+*.log
+
+# Secrets — never bake into image; mounted at runtime via k8s Secret
+secret/
+
+# Config — mounted at runtime via k8s ConfigMap
+config/

@@ -1,0 +1,12 @@
+# Self-Signed ClusterIssuer for cert-manager
+# Tells cert-manager to issue self-signed certificates
+# cert-manager watches ingresses with annotation:
+#   cert-manager.io/cluster-issuer: selfsigned
+# and automatically generates certificates
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

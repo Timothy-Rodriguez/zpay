@@ -1,0 +1,39 @@
+# Hard cap: all PersistentVolumeClaims in the zpay namespace
+# cannot exceed 90Gi total (10Gi reserved for OS + k3s overhead).
+#
+# Budget breakdown:
+#   postgres    25Gi
+#   kafka       30Gi
+#   redis        3Gi
+#   loki        15Gi
+#   prometheus  10Gi
+#   grafana      2Gi
+#   ──────────────────
+#   total       85Gi  (5Gi buffer under the 90Gi quota)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: storage-quota
+  namespace: prod
+spec:
+  hard:
+    requests.storage: "90Gi"
+---
+# Per-pod memory guard — prevents any single pod from starving the node.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: prod
+spec:
+  limits:
+    - type: Container
+      default:
+        memory: "512Mi"
+        cpu: "500m"
+      defaultRequest:
+        memory: "128Mi"
+        cpu: "100m"
+      max:
+        memory: "4Gi"
+        cpu: "4"
