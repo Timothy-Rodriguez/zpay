@@ -166,9 +166,9 @@ infra:apply:
   script:
     # ── DEBUG: Show runner and server details ──────────────────────────────
     - echo "=== DEBUG INFO ==="
-    - echo "Runner IP: $(hostname -I | awk '{print $1}')"
-    - echo "SERVER_USER: $SERVER_USER"
-    - echo "SERVER_IP: $SERVER_IP"
+    - curl -s https://checkip.amazonaws.com || hostname -I
+    - echo "SERVER_USER=$SERVER_USER"
+    - echo "SERVER_IP=$SERVER_IP"
     - echo "==================="
 
     # ── 0. Install cert-manager (idempotent — skips if already installed) ─
