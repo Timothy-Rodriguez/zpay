@@ -64,7 +64,7 @@ default:
 # Every job that SSHes into the server calls this anchor in before_script.
 .ssh_setup: &ssh_setup |
   eval $(ssh-agent -s)
-  cat $SSH_PRIVATE_KEY_FILE | tr -d '\r' | ssh-add -   # ← use file instead
+  cat "$SSH_PRIVATE_KEY_FILE" | tr -d '\r' | ssh-add -
   mkdir -p ~/.ssh && chmod 700 ~/.ssh
   ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts
   chmod 644 ~/.ssh/known_hosts
@@ -82,7 +82,7 @@ backend:test:
     - cd backend
   script:
     - go vet ./...
-    - go test -race -timeout 120s ./...
+    - CGO_ENABLED=1 go test -race -timeout 120s ./...
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: [backend/**/*]
