@@ -67,7 +67,7 @@ default:
   cat "$SSH_PRIVATE_KEY_FILE" | tr -d '\r' | ssh-add -
   mkdir -p ~/.ssh && chmod 700 ~/.ssh
   echo "=== Runner public IP ==="
-  curl -s https://checkip.amazonaws.com || true
+  wget -qO- https://checkip.amazonaws.com || echo "IP fetch failed"
   echo "========================"
   ssh-keyscan -H "$SERVER_IP" >> ~/.ssh/known_hosts 2>/dev/null || true
   chmod 644 ~/.ssh/known_hosts
