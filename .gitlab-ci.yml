@@ -304,17 +304,18 @@ deploy-frontend:
     - npm run build
 
     # ── 2. Deploy to Vercel ───────────────────────────────────────────────
+    # VERCEL_ORG_ID and VERCEL_PROJECT_ID env vars are auto-read by the CLI.
     # On main branch: deploy to production
     # On other branches: deploy to preview URL
     - |
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
-        vercel deploy --prod \
+        vercel deploy --prebuilt --prod \
           --token "$VERCEL_TOKEN" \
-          --scope "$VERCEL_ORG_ID"
+          --yes
       else
-        vercel deploy \
+        vercel deploy --prebuilt \
           --token "$VERCEL_TOKEN" \
-          --scope "$VERCEL_ORG_ID"
+          --yes
       fi
   
   rules:
