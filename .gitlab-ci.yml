@@ -171,15 +171,9 @@ infra:apply:
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s 2>/dev/null || true"
 
-    # ── 1. Copy all k8s manifests to the server (pipeline-unique dir) ─────
-    - export REMOTE_DIR="/tmp/zpay-k8s-$CI_PIPELINE_ID"
-    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf $REMOTE_DIR"
-    - scp -r k8s "$SERVER_USER@$SERVER_IP:$REMOTE_DIR"
-    - ssh "$SERVER_USER@$SERVER_IP" "ls $REMOTE_DIR/"
-
-    # ── 2. Namespace & storage quota ─────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/namespace.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/storage-quota.yaml"
+    # ── 1. Namespace & storage quota (streamed from runner) ──────────────
+    - cat k8s/namespace.yaml      | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/storage-quota.yaml  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 3. Secrets — piped as YAML via stdin (safe for special characters) ─
     #    stringData lets Kubernetes handle base64; we never touch the raw values.
@@ -219,23 +213,21 @@ infra:apply:
       "
 
     # ── 4. ConfigMap ──────────────────────────────────────────────────────
-    # Diagnostic: prove the file is on the server immediately before apply
-    - ssh "$SERVER_USER@$SERVER_IP" "ls -la $REMOTE_DIR/ ; echo '--- configmap head ---' ; head -3 $REMOTE_DIR/configmap.yaml || echo 'cannot read configmap.yaml'"
-    # Stream the configmap directly from the runner — bypasses any /tmp weirdness
     - cat k8s/configmap.yaml | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 5. Infrastructure (PVCs + Deployments + Services) ────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/postgres/"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/redis/"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/kafka/"
+    # Stream manifests from runner — avoids scp partial-copy failures
+    - cat k8s/postgres/*.yaml  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/redis/*.yaml     | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/kafka/*.yaml     | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 6. Observability stack ────────────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/observability/"
+    - cat k8s/observability/*.yaml | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 7. ClusterIssuer & API ingress ────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/selfsigned-issuer.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/api/service.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/api/ingress.yaml"
+    - cat k8s/selfsigned-issuer.yaml            | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/api/service.yaml                  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/api/ingress.yaml                  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
     # Give cert-manager time to generate the certificate
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready certificate/prod-api-tls -n $KUBE_NAMESPACE --timeout=60s 2>/dev/null || true"
 
@@ -243,9 +235,6 @@ infra:apply:
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/postgres -n $KUBE_NAMESPACE --timeout=120s"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/redis    -n $KUBE_NAMESPACE --timeout=120s"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/kafka    -n $KUBE_NAMESPACE --timeout=180s"
-
-    # ── 9. Cleanup temp files ─────────────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf $REMOTE_DIR"
 
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -265,15 +254,10 @@ deploy:apps:
     - apk add --no-cache openssh-client
     - *ssh_setup
   script:
-    # ── 1. Copy app manifests to the server (pipeline-unique dir) ─────────
-    - export REMOTE_DIR="/tmp/zpay-k8s-$CI_PIPELINE_ID"
-    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf $REMOTE_DIR"
-    - scp -r k8s "$SERVER_USER@$SERVER_IP:$REMOTE_DIR"
-
-    # ── 2. Apply app deployment manifests (idempotent — creates if missing) ─
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/api/deployment.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/consumer/deployment.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/producer/deployment.yaml"
+    # ── 1. Apply app deployment manifests (streamed from runner) ─────────
+    - cat k8s/api/deployment.yaml      | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/consumer/deployment.yaml | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
+    - cat k8s/producer/deployment.yaml | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 3. Swap to the new image SHA built in this pipeline ───────────────
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl set image deployment/prod-api      api=$API_IMAGE      -n $KUBE_NAMESPACE"
@@ -292,9 +276,6 @@ deploy:apps:
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-api      -n $KUBE_NAMESPACE --timeout=180s"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-consumer -n $KUBE_NAMESPACE --timeout=120s"
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/prod-producer -n $KUBE_NAMESPACE --timeout=120s"
-
-    # ── 6. Cleanup ────────────────────────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "rm -rf $REMOTE_DIR"
 
   environment:
     name: production
