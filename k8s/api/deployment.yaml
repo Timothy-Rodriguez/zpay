@@ -83,7 +83,7 @@ spec:
         - name: app-config
           configMap:
             name: prod-config
-        - name: tls-secret
+        - name: jwt-secret
           secret:
             secretName: prod-secrets
             items:
