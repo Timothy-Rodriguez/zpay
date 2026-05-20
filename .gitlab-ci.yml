@@ -218,8 +218,7 @@ infra:apply:
       "
 
     # ── 4. ConfigMap ──────────────────────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "ls -la /tmp/zpay-k8s/configmap.yaml"
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/configmap.yaml"
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f - < /tmp/zpay-k8s/configmap.yaml"
 
     # ── 5. Infrastructure (PVCs + Deployments + Services) ────────────────
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f /tmp/zpay-k8s/postgres/"
