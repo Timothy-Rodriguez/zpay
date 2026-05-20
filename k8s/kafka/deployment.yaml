@@ -43,9 +43,9 @@ spec:
             - name: KAFKA_CONTROLLER_LISTENER_NAMES
               value: "CONTROLLER"
             - name: CLUSTER_ID
-              value: "zpay-cluster-id-prod1"
+              value: "ASNFZ4mrze8BI0VniavN7w"
             - name: KAFKA_CLUSTER_ID
-              value: "zpay-cluster-id-prod1"
+              value: "ASNFZ4mrze8BI0VniavN7w"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
