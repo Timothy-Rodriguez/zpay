@@ -93,3 +93,4 @@ spec:
         - name: kafka-data
           persistentVolumeClaim:
             claimName: kafka-pvc
+---

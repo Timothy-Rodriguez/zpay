@@ -52,3 +52,4 @@ spec:
       port: 4318
       targetPort: 4318
   type: ClusterIP
+---

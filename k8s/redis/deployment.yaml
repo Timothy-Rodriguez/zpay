@@ -47,3 +47,4 @@ spec:
         - name: redis-data
           persistentVolumeClaim:
             claimName: redis-pvc
+---
