@@ -219,7 +219,10 @@ infra:apply:
       "
 
     # ── 4. ConfigMap ──────────────────────────────────────────────────────
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/configmap.yaml"
+    # Diagnostic: prove the file is on the server immediately before apply
+    - ssh "$SERVER_USER@$SERVER_IP" "ls -la $REMOTE_DIR/ ; echo '--- configmap head ---' ; head -3 $REMOTE_DIR/configmap.yaml || echo 'cannot read configmap.yaml'"
+    # Stream the configmap directly from the runner — bypasses any /tmp weirdness
+    - cat k8s/configmap.yaml | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
 
     # ── 5. Infrastructure (PVCs + Deployments + Services) ────────────────
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f $REMOTE_DIR/postgres/"
