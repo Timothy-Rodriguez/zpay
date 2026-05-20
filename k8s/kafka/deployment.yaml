@@ -42,6 +42,8 @@ spec:
               value: "PLAINTEXT"
             - name: KAFKA_CONTROLLER_LISTENER_NAMES
               value: "CONTROLLER"
+            - name: CLUSTER_ID
+              value: "zpay-cluster-id-prod1"
             - name: KAFKA_CLUSTER_ID
               value: "zpay-cluster-id-prod1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
