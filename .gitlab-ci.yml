@@ -228,8 +228,8 @@ infra:apply:
     - cat k8s/selfsigned-issuer.yaml            | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
     - cat k8s/api/service.yaml                  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
     - cat k8s/api/ingress.yaml                  | ssh "$SERVER_USER@$SERVER_IP" "kubectl apply -f -"
-    # Give cert-manager time to generate the certificate
-    - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready certificate/prod-api-tls -n $KUBE_NAMESPACE --timeout=60s 2>/dev/null || true"
+    # Give cert-manager time to complete the Let's Encrypt HTTP-01 challenge (can take ~90s)
+    - ssh "$SERVER_USER@$SERVER_IP" "kubectl wait --for=condition=ready certificate/prod-api-tls -n $KUBE_NAMESPACE --timeout=180s 2>/dev/null || true"
 
     # ── 8. Block until core infra is healthy ─────────────────────────────
     - ssh "$SERVER_USER@$SERVER_IP" "kubectl rollout status deployment/postgres -n $KUBE_NAMESPACE --timeout=120s"
@@ -325,4 +325,4 @@ deploy-frontend:
   
   environment:
     name: frontend
-    url: https://zpay.vercel.app
+    url: "https://zpay-app-chi.vercel.app"
