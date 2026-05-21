@@ -94,3 +94,27 @@ func (db *DB) ClearRefreshToken(ctx context.Context, email string) error {
 	_, err := db.Pool.Exec(ctx, query, email)
 	return err
 }
+
+// UserExists checks whether a user with the given email exists in the database.
+func (db *DB) UserExists(ctx context.Context, email string) (bool, error) {
+	_, dbSpan := db.Tracer.Start(ctx, "db.user_exists")
+	defer dbSpan.End()
+
+	dbSpan.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "SELECT"),
+		attribute.String("user.email", email),
+	)
+
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`
+	err := db.Pool.QueryRow(ctx, query, email).Scan(&exists)
+	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "user_exists query failed")
+		return false, fmt.Errorf("failed to check user existence: %w", err)
+	}
+
+	dbSpan.SetStatus(codes.Ok, "user_exists query success")
+	return exists, nil
+}

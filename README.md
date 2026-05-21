@@ -1,6 +1,6 @@
 # ZPay
 
-ZPay is a fintech simulation application built to demonstrate practical backend design patterns and observability techniques in a payment workflow.
+ZPay is a payment simulation and ledger platform developed with Go Gin and Reach framework that implements production-grade idempotency, deterministic locking, event-driven architecture, and distributed system patterns — deployed on Kubernetes cluster with full observability.
 
 It includes:
 

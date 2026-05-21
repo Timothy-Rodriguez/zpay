@@ -83,11 +83,38 @@
 .card-mock-bottom { display: flex; justify-content: space-between; font-family: ui-monospace, monospace; opacity: .9; }
 
 /* Features */
-.features { padding: 48px 0; }
-.features h2 { text-align: center; margin-bottom: 28px; }
+.features {
+  padding: 64px 0;
+  border-top: 1px solid var(--border);
+  animation: sectionFadeIn .5s ease both;
+}
+.features h2 { text-align: center; margin-bottom: 32px; }
 .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-.feature { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
+.feature {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 22px;
+  transition: transform .2s, box-shadow .2s;
+}
+.feature:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .feature-icon { font-size: 1.6rem; margin-bottom: 8px; }
+
+/* About section */
+.about-section { text-align: center; }
+.about-body {
+  max-width: 680px;
+  margin: 0 auto;
+  font-size: 1.05rem;
+  line-height: 1.8;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.about-links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-top: 0.5rem; }
+
+@keyframes sectionFadeIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* Auth */
 .auth-wrap { min-height: calc(100vh - 200px); display: grid; place-items: center; padding: 40px 16px; }
@@ -186,3 +213,44 @@
   padding: 20px 28px; display: flex; justify-content: space-between;
   color: var(--muted); font-size: .9rem; flex-wrap: wrap; gap: 8px;
 }
+
+/* ── Dashboard layout ───────────────────────────────────────── */
+.dash-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+@media (max-width: 900px) { .dash-row { grid-template-columns: 1fr; } }
+
+/* Stat card amount colours */
+.amount-credit { color: #6ee7b7; }
+.amount-debit  { color: #fca5a5; }
+
+/* Dots */
+.dot        { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+.dot-credit { background: #10b981; }
+.dot-debit  { background: #ef4444; }
+
+/* Chart legend */
+.chart-legend { display: flex; align-items: center; font-size: .82rem; color: var(--muted); }
+
+/* Donut legend */
+.donut-legend { display: flex; gap: 24px; }
+.donut-legend-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: .85rem; }
+.donut-legend-item strong { font-size: 1rem; color: var(--text); }
+
+/* Ledger summary */
+.ledger-summary-list { display: flex; flex-direction: column; gap: 12px; }
+.ledger-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: .95rem;
+}
+.ledger-row-total { padding-top: 4px; font-size: 1rem; }
+.ledger-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+/* Badges */
+.badge { font-size: .72rem; padding: 3px 9px; border-radius: 999px; font-weight: 600; }
+.badge-neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.badge-info    { background: rgba(14,165,233,.15); color: #7dd3fc; }
+.badge-success { background: rgba(16,185,129,.15); color: #6ee7b7; }

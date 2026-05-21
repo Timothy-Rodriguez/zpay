@@ -9,7 +9,6 @@ import LoginUser from './pages/LoginUser.jsx'
 import Payment from './pages/Payment.jsx'
 import PaymentProcess from './pages/PaymentProcess.jsx'
 import Dashboard from './pages/Dashboard.jsx'
-import Pay from './pages/Pay.jsx'
 import Transactions from './pages/Transactions.jsx'
 import Profile from './pages/Profile.jsx'
 import NotFound from './pages/NotFound.jsx'
@@ -28,7 +27,6 @@ function App() {
           <Route path="/payment" element={<ProtectedRoute><Payment /></ProtectedRoute>} />
           <Route path="/payment-process" element={<ProtectedRoute><PaymentProcess /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/pay" element={<ProtectedRoute><Pay /></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />

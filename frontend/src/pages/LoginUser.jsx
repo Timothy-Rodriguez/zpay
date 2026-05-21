@@ -41,7 +41,6 @@ export default function LoginUser() {
     <section className="auth-wrap">
       <div className="auth-card">
         <h1>Log in to ZPay</h1>
-        <p className="muted">Use your email and password to access your account.</p>
         <form onSubmit={submit} className="form">
           <label htmlFor="email">Email address</label>
           <input
