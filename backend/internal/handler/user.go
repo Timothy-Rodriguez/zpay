@@ -157,7 +157,7 @@ func (u *UserHandler) LoginUser(c *gin.Context) {
 	userClaims := make(map[string]interface{})
 	userClaims[constants.ClaimsEmail] = loginRequest.Email
 
-	accessToken, err := u.App.JWT.GenerateToken(userClaims, time.Second*5)
+	accessToken, err := u.App.JWT.GenerateToken(userClaims, time.Second*1800) // 30 minute access token span
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		u.App.Logger.Warn("error_creating_token",
@@ -169,7 +169,7 @@ func (u *UserHandler) LoginUser(c *gin.Context) {
 
 	refreshClaims := make(map[string]interface{})
 	refreshClaims[constants.ClaimsEmail] = loginRequest.Email
-	refreshToken, err := u.App.JWT.GenerateToken(refreshClaims, time.Minute*30) // 30 minutes for testing
+	refreshToken, err := u.App.JWT.GenerateToken(refreshClaims, time.Hour*24) // 1 day refresh token span
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		u.App.Logger.Warn("error_creating_token",

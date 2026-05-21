@@ -14,8 +14,7 @@ type JWTService interface {
 
 // jwtService is an implementation of JWTService.
 type jwtService struct {
-	secret []byte // Secret key used for signing and verifying tokens
-	// expiration    time.Duration     // Default expiration duration for tokens
+	secret        []byte            // Secret key used for signing and verifying tokens
 	signingMethod jwt.SigningMethod // Signing method (e.g., HS256)
 }
 
@@ -29,10 +28,8 @@ func NewJWTService(secret []byte) JWTService {
 
 // GenerateToken creates a new JWT with the provided claims and signs it using the secret key.
 func (s *jwtService) GenerateToken(claims map[string]interface{}, expiration time.Duration) (string, error) {
-	// If expiration isn't provided in claims, set the default expiration
-	if _, expExists := claims["exp"]; !expExists {
-		claims["exp"] = time.Now().Add(expiration).Unix()
-	}
+
+	claims["exp"] = time.Now().Add(expiration).Unix()
 
 	// Create a new token with the specified signing method
 	token := jwt.NewWithClaims(s.signingMethod, jwt.MapClaims(claims))
@@ -65,7 +62,6 @@ func (s *jwtService) ValidateToken(tokenString string) (map[string]interface{}, 
 		return nil, jwt.ErrSignatureInvalid
 	}
 
-	// Extract claims as a map
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, jwt.ErrTokenInvalidClaims
