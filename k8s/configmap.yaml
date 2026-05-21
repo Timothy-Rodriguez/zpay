@@ -12,9 +12,6 @@ data:
       port: 8000
       env: production
 
-    jwt:
-      expiration: 3600
-
     database:
       host: postgres
       port: 5432

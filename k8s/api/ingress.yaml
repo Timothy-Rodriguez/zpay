@@ -1,6 +1,6 @@
-# Traefik Ingress with IP-based HTTPS
-# cert-manager automatically generates self-signed certificates
-# (installed via GitLab CI/CD)
+# Traefik Ingress with domain-based HTTPS via Let's Encrypt
+# sslip.io maps 176-9-82-157.sslip.io → 176.9.82.157 (no DNS config needed)
+# cert-manager issues a real trusted cert via HTTP-01 challenge on port 80
 #
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -10,12 +10,15 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    cert-manager.io/cluster-issuer: selfsigned
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   tls:
-    - secretName: prod-api-tls
+    - hosts:
+        - 176-9-82-157.sslip.io
+      secretName: prod-api-tls
   rules:
-    - http:
+    - host: 176-9-82-157.sslip.io
+      http:
         paths:
           - path: /
             pathType: Prefix
