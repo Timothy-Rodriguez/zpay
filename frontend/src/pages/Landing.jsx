@@ -5,35 +5,36 @@ export default function Landing() {
     <>
       <section className="hero-section">
         <div className="hero-content">
-          <span className="pill">New · Instant passwordless sign-in</span>
+          <span className="pill">Payment Simulation · Distributed Systems · Kubernetes</span>
           <h1>
-            Money that moves <span className="gradient">at your speed.</span>
+            A real-world payment system <span className="gradient">built to scale.</span>
           </h1>
           <p className="lead">
-            ZPay is a modern fintech wallet to store credits, top up in seconds,
-            and send payments to anyone — all with bank-grade security and zero
-            passwords.
+            ZPay is a payment simulation and ledger platform developed with Go Gin and Reach framework that implements
+            production-grade idempotency, deterministic locking, event-driven
+            architecture, and distributed system patterns — deployed on
+            Kubernetes cluster with full observability.
           </p>
           <div className="cta-row">
-            <Link to="/signin" className="btn btn-primary btn-lg">
-              Get started free
+            <Link to="/create-user" className="btn btn-primary btn-lg">
+              Try it out
             </Link>
-            <a href="#features" className="btn btn-ghost btn-lg">
+            <a href="#what-is-zpay" className="btn btn-ghost btn-lg">
               Learn more
             </a>
           </div>
           <div className="trust">
             <div>
-              <strong>₹2.4B+</strong>
-              <span>Processed</span>
+              <strong>Idempotent</strong>
+              <span>Transactions</span>
             </div>
             <div>
-              <strong>180k</strong>
-              <span>Active users</span>
+              <strong>Kubernetes</strong>
+              <span>Deployed</span>
             </div>
             <div>
-              <strong>99.99%</strong>
-              <span>Uptime</span>
+              <strong>Event-Driven</strong>
+              <span>Architecture</span>
             </div>
           </div>
         </div>
@@ -55,28 +56,104 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="features" className="features">
-        <h2>Why ZPay?</h2>
+      <section id="what-is-zpay" className="features">
+        <h2>What is ZPay?</h2>
         <div className="feature-grid">
           <div className="feature">
-            <div className="feature-icon">⚡</div>
-            <h3>Instant transfers</h3>
-            <p>Send credits to anyone in seconds with zero fees.</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon">🔐</div>
-            <h3>Passwordless security</h3>
-            <p>Sign in with just your email — no passwords to forget or leak.</p>
-          </div>
-          <div className="feature">
             <div className="feature-icon">💳</div>
-            <h3>Top-up anytime</h3>
-            <p>Add credits via card, UPI, or net banking in one tap.</p>
+            <h3>Payment Simulation & Ledger</h3>
+            <p>
+              A fully functional payment platform simulating real-world
+              money movement with a double-entry ledger, balance tracking,
+              and transaction history.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🔒</div>
+            <h3>Idempotency & Deterministic Locks</h3>
+            <p>
+              Every transaction is protected by idempotency keys and
+              deterministic row-level locking to prevent double spends
+              and race conditions under concurrent load.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">☸️</div>
+            <h3>Kubernetes Deployment</h3>
+            <p>
+              The entire stack — API, Kafka, Postgres, Redis, and
+              observability — runs on Kubernetes with namespaced
+              resources, persistent volumes, and ingress routing.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">📨</div>
+            <h3>Event-Driven Architecture</h3>
+            <p>
+              Payments publish events to Kafka via a transactional outbox
+              pattern. Consumers process receipts asynchronously and
+              dispatch email notifications, mimicking real fintech pipelines.
+            </p>
           </div>
           <div className="feature">
             <div className="feature-icon">📊</div>
-            <h3>Live insights</h3>
-            <p>Track every transaction with a clean, unified dashboard.</p>
+            <h3>Full Observability</h3>
+            <p>
+              Distributed tracing with Jaeger, metrics with Prometheus &amp;
+              Grafana, and structured log aggregation with Loki &amp; Promtail
+              give end-to-end visibility into every request.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon">🚀</div>
+            <h3>CI/CD with GitLab</h3>
+            <p>
+              Automated build, test, and deploy pipelines via GitLab CI/CD
+              keep the platform continuously integrated and shipped to the
+              cluster with zero manual steps.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="features about-section">
+        <h2>About Me</h2>
+        <div className="about-body">
+          <p>
+            I'm <strong>Timothy Rodriguez</strong>, a Backend Developer with
+            4 years of experience designing, developing, and scaling
+            production-grade systems using <strong>Golang</strong>,{' '}
+            <strong>Python</strong>, <strong>Java</strong>, REST APIs, and
+            SQL/NoSQL databases. ZPay is one of my projects that brings
+            together distributed systems, cloud-native deployment, and
+            real-world engineering patterns in a single platform.
+          </p>
+          <p>Want to connect?</p>
+          <div className="about-links">
+            <a
+              href="https://www.linkedin.com/in/timothy-rodriguez-86a8b1200/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost"
+            >
+              LinkedIn
+            </a>
+            <a
+              href="https://leetcode.com/u/mtimothyrodriguez2000/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost"
+            >
+              LeetCode
+            </a>
+            <a
+              href="https://github.com/Timothy-Rodriguez"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-ghost"
+            >
+              GitHub
+            </a>
           </div>
         </div>
       </section>

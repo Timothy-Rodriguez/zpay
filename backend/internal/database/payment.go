@@ -227,6 +227,47 @@ func (db *DB) GetBalance(ctx context.Context, email string) (decimal.Decimal, er
 	return balance, nil
 }
 
+// AccountSummary represents a user account with its balance.
+type AccountSummary struct {
+	Email   string          `json:"email"`
+	Balance decimal.Decimal `json:"balance"`
+}
+
+// GetAccounts returns up to limit accounts ordered by creation time.
+func (db *DB) GetAccounts(ctx context.Context, limit int) ([]AccountSummary, error) {
+	_, dbSpan := db.Tracer.Start(ctx, "db.get_accounts")
+	defer dbSpan.End()
+
+	dbSpan.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "SELECT"),
+	)
+
+	query := `SELECT email, balance FROM accounts ORDER BY created_at ASC LIMIT $1`
+	rows, err := db.Pool.Query(ctx, query, limit)
+	if err != nil {
+		dbSpan.RecordError(err)
+		dbSpan.SetStatus(codes.Error, "get_accounts query failed")
+		return nil, fmt.Errorf("failed to get accounts: %w", err)
+	}
+	defer rows.Close()
+
+	accounts := make([]AccountSummary, 0, limit)
+	for rows.Next() {
+		var a AccountSummary
+		if err := rows.Scan(&a.Email, &a.Balance); err != nil {
+			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		accounts = append(accounts, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
+	}
+
+	dbSpan.SetStatus(codes.Ok, "get_accounts success")
+	return accounts, nil
+}
+
 // Transaction represents one payment row joined to account emails.
 type Transaction struct {
 	ID        int             `json:"id"`

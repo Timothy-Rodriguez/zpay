@@ -78,6 +78,9 @@ async function refreshAccessToken() {
 
     if (!res.ok) {
       setAccessToken(null)
+      if (res.status === 400 || res.status === 401) {
+        window.location.replace('/')
+      }
       const err = new Error('Session expired, please log in again')
       err.status = res.status
       throw err
@@ -226,6 +229,20 @@ export const api = {
   getBalance: () => request('/get-balance', { method: 'GET' }),
 
   getTransactions: () => request('/get-transactions', { method: 'GET' }),
+
+  getDashboard: () => request('/dashboard', { method: 'GET' }),
+
+  checkUserExists: (email) =>
+    request(`/user?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+      _skipAuth: true,
+    }),
+
+  getAccounts: () =>
+    request('/get-accounts', {
+      method: 'GET',
+      _skipAuth: true,
+    }),
 
   // Low-level escape hatch for ad-hoc calls — interceptor still applies.
   request,

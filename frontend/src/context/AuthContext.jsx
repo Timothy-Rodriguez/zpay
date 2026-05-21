@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { api } from '../utils/api.js'
+import { api, onAccessTokenChange } from '../utils/api.js'
 
 const AuthContext = createContext(null)
 
@@ -17,6 +17,14 @@ export function AuthProvider({ children }) {
     if (user) localStorage.setItem('zpay_user', JSON.stringify(user))
     else localStorage.removeItem('zpay_user')
   }, [user])
+
+  // When the access token is cleared externally (e.g. refresh 400), wipe user state
+  // so the Navbar immediately switches to the logged-out header.
+  useEffect(() => {
+    return onAccessTokenChange((token) => {
+      if (!token) setUser(null)
+    })
+  }, [])
 
   const buildUser = (email) => {
     const name = email.split('@')[0].replace(/[._-]+/g, ' ')
