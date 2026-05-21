@@ -10,7 +10,7 @@ export default function Landing() {
             A real-world payment system <span className="gradient">built to scale.</span>
           </h1>
           <p className="lead">
-            ZPay is a payment simulation and ledger platform developed with Go Gin and Reach framework that implements
+            ZPay is a payment simulation and ledger platform developed with Go Gin and React framework that implements
             production-grade idempotency, deterministic locking, event-driven
             architecture, and distributed system patterns — deployed on
             Kubernetes cluster with full observability.
