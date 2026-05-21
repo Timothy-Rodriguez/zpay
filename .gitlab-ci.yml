@@ -298,14 +298,13 @@ deploy-frontend:
   before_script:
     - npm install -g vercel
   script:
-    # ── 1. Build frontend via Vercel CLI (outputs to .vercel/output/) ─────
-    - cd frontend
-    - npm install
+    # ── 1. Build frontend via Vercel CLI (outputs to frontend/.vercel/output/) ─
+    - npm install --prefix frontend
     - |
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
-        vercel build --prod --token "$VERCEL_TOKEN" --yes
+        vercel build --prod --token "$VERCEL_TOKEN" --yes --cwd frontend
       else
-        vercel build --token "$VERCEL_TOKEN" --yes
+        vercel build --token "$VERCEL_TOKEN" --yes --cwd frontend
       fi
 
     # ── 2. Deploy prebuilt output to Vercel ───────────────────────────────
@@ -313,11 +312,11 @@ deploy-frontend:
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
         vercel deploy --prebuilt --prod \
           --token "$VERCEL_TOKEN" \
-          --yes
+          --yes --cwd frontend
       else
         vercel deploy --prebuilt \
           --token "$VERCEL_TOKEN" \
-          --yes
+          --yes --cwd frontend
       fi
   
   rules:
