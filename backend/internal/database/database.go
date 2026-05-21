@@ -26,12 +26,14 @@ type DatabaseClient interface {
 	CheckLoginAndStoreRefreshToken(ctx context.Context, email string, password string, refreshToken string) (bool, error)
 	GetRefreshToken(ctx context.Context, email string) (string, error)
 	ClearRefreshToken(ctx context.Context, email string) error
+	UserExists(ctx context.Context, email string) (bool, error)
 
 	// Payments table functions
 	UpdateBalace(ctx context.Context, email string, amount decimal.Decimal) error
 	ProcessTransaction(ctx context.Context, fromEmail string, toEmail string, amount decimal.Decimal) error
 	GetBalance(ctx context.Context, email string) (decimal.Decimal, error)
 	GetTransactions(ctx context.Context, email string) ([]Transaction, error)
+	GetAccounts(ctx context.Context, limit int) ([]AccountSummary, error)
 
 	// Outbox table functions
 	GetPendingOutboxRecords(ctx context.Context, batchSize int) ([]*PaymentOutboxEvent, error)

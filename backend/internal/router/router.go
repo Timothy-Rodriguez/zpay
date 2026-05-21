@@ -42,6 +42,8 @@ func SetupRouter(app *model.App) *gin.Engine {
 		public.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 		public.GET("/", handler.Public)
+		public.GET("/user", userHandler.CheckUserExists)
+		public.GET("/get-accounts", userHandler.GetAccounts)
 		public.POST("/signup", userHandler.CreateUser)
 		public.POST("/login", userHandler.LoginUser)
 		public.GET("/refresh", userHandler.RefreshToken)
@@ -53,6 +55,7 @@ func SetupRouter(app *model.App) *gin.Engine {
 	{
 		auth.GET("/get-balance", transactionHandler.GetBalance)
 		auth.GET("/get-transactions", transactionHandler.GetTransactions)
+		auth.GET("/dashboard", transactionHandler.GetDashboard)
 		auth.POST("/payment", transactionHandler.ProcessTransaction)
 		auth.POST("/logout", userHandler.LogoutUser)
 	}

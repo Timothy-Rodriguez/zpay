@@ -322,3 +322,63 @@ func (u *UserHandler) clearCookie(c *gin.Context, name string) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(name, "", -1, "/", "", false, true)
 }
+
+// CheckUserExists handler check if user exists
+func (u *UserHandler) CheckUserExists(c *gin.Context) {
+	ctx, span := u.App.Tracer.Start(c.Request.Context(), "user.check_exists")
+	defer span.End()
+
+	email := strings.TrimSpace(c.Query("email"))
+	if email == "" {
+		span.SetStatus(codes.Error, "missing email query param")
+		u.App.Logger.Warn("check_user_exists_missing_email",
+			"http_path", c.FullPath(),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email query parameter is required"})
+		return
+	}
+
+	span.SetAttributes(attribute.String("user.email", email))
+
+	exists, err := u.App.DB.UserExists(ctx, email)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "db user_exists failed")
+		u.App.Logger.Error("check_user_exists_db_error",
+			"email", email,
+			"error", err.Error(),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check user"})
+		return
+	}
+
+	span.SetAttributes(attribute.Bool("user.exists", exists))
+	span.SetStatus(codes.Ok, "user_exists check success")
+
+	u.App.Logger.Info("check_user_exists",
+		"email", email,
+		"exists", exists,
+	)
+
+	c.JSON(http.StatusOK, gin.H{"exists": exists})
+}
+
+// GET /get-accounts — returns up to 5 accounts with their balances (public, for testing)
+func (u *UserHandler) GetAccounts(c *gin.Context) {
+	ctx, span := u.App.Tracer.Start(c.Request.Context(), "user.get_accounts")
+	defer span.End()
+
+	accounts, err := u.App.DB.GetAccounts(ctx, 5)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "db get_accounts failed")
+		u.App.Logger.Error("get_accounts_db_error", "error", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch accounts"})
+		return
+	}
+
+	span.SetStatus(codes.Ok, "get_accounts success")
+	u.App.Logger.Info("get_accounts", "count", len(accounts))
+
+	c.JSON(http.StatusOK, gin.H{"accounts": accounts})
+}

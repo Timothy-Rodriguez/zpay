@@ -37,3 +37,22 @@ type Transaction struct {
 	Direction string          `json:"direction"` // "credit" or "debit"
 	CreatedAt time.Time       `json:"created_at"`
 }
+
+// DailyActivity holds aggregated credit/debit amounts for a single calendar day.
+type DailyActivity struct {
+	Day    string          `json:"day"`    // e.g. "Mon"
+	Date   string          `json:"date"`   // e.g. "2026-05-19"
+	Credit decimal.Decimal `json:"credit"` // total credits on this day
+	Debit  decimal.Decimal `json:"debit"`  // total debits on this day
+}
+
+// DashboardResponse is the response shape for GET /dashboard.
+type DashboardResponse struct {
+	Balance          string          `json:"balance"`
+	TotalCredited    string          `json:"total_credited"`
+	TotalDebited     string          `json:"total_debited"`
+	NetFlow          string          `json:"net_flow"`
+	TransactionCount int             `json:"transaction_count"`
+	Activity         []DailyActivity `json:"activity"` // last 7 calendar days
+	Recent           []Transaction   `json:"recent"`   // last 5 transactions
+}

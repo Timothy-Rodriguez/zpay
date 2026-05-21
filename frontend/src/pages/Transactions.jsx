@@ -7,7 +7,6 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('all')
-  const [q, setQ] = useState('')
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -28,27 +27,14 @@ export default function Transactions() {
   }, [])
 
   const filtered = useMemo(() => {
-    return transactions.filter((t) => {
-      if (filter !== 'all' && t.direction !== filter) return false
-      const searchText = q.toLowerCase()
-      const fromMatch = t.from_email?.toLowerCase().includes(searchText)
-      const toMatch = t.to_email?.toLowerCase().includes(searchText)
-      if (q && !fromMatch && !toMatch) return false
-      return true
-    })
-  }, [transactions, filter, q])
+    return transactions.filter((t) => filter === 'all' || t.direction === filter)
+  }, [transactions, filter])
 
   return (
     <section className="page">
       <h1>Transactions</h1>
 
       <div className="toolbar">
-        <input
-          type="search"
-          placeholder="Search transactions…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
         <div className="tabs">
           {['all', 'credit', 'debit'].map((f) => (
             <button
