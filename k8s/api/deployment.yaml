@@ -52,7 +52,7 @@ spec:
               value: "jaeger:4317"
             # Set your Vercel frontend URL here so CORS allows it
             - name: CORS_ALLOWED_ORIGINS
-              value: "https://YOUR_APP.vercel.app"
+              value: "https://zpay-app-chi.vercel.app"
           resources:
             requests:
               memory: "128Mi"
