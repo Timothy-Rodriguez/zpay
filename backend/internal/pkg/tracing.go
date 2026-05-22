@@ -43,7 +43,7 @@ func InitTracerProvider(ctx context.Context, serviceName string) (*sdktrace.Trac
 			sdktrace.WithBatchTimeout(2*time.Second),
 		),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)),
 	)
 
 	otel.SetTracerProvider(tracerProvider)
