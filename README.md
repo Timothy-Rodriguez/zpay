@@ -1,6 +1,6 @@
 # ZPay
 
-ZPay is a payment simulation and ledger platform developed with Go Gin and Reach framework that implements production-grade idempotency, deterministic locking, event-driven architecture, and distributed system patterns — deployed on Kubernetes cluster with full observability.
+ZPay is a payment simulation and ledger platform developed with Go Gin and React framework that implements production-grade idempotency, deterministic locking, event-driven architecture, and distributed system patterns — deployed on Kubernetes cluster with full observability.
 
 Repository URL: https://gitlab.com/mtimothyrodriguez2000/zpay \
 Deployed URL: https://zpay-app-chi.vercel.app/
