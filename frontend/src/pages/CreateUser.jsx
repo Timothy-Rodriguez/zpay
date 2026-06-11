@@ -90,7 +90,7 @@ export default function CreateUser() {
         <h1>Create your ZPay account</h1>
         <p className="muted">
           Simulated payment receipts will be sent to this email for demonstration purposes.
-        </p>doc
+        </p>
         <form onSubmit={submit} className="form">
           <label htmlFor="email">Email address</label>
           <input
